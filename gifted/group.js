@@ -14,7 +14,7 @@ gmd(
       conText;
 
     if (!isGroup) {
-      return reply("Groups Only Command only!");
+      return reply("Groups Only Command only");
     }
 
     if (!isBotAdmin) {
@@ -1500,10 +1500,11 @@ gmd(
     description: "Send text or quoted media to group status. Superuser only.",
   },
   async (from, Gifted, conText) => {
-    const { reply, react, isSuperUser, isGroup, q, quoted, quotedMsg, mek } = conText;
+    const { reply, react, isSuperUser, isGroup, q, quoted, quotedMsg, mek, formatAudio, formatVideo } = conText;
     const { downloadMediaMessage } = require("gifted-baileys");
     const fs = require("fs");
     const path = require("path");
+    const { formatAudio, formatVideo } = require("./path/to/your/format/functions");
 
     if (!isGroup) return reply("❌ Group only command!");
     if (!isSuperUser) return reply("❌ Owner Only Command!");
@@ -1528,7 +1529,7 @@ gmd(
 
         if (quoted?.imageMessage) {
           const caption = q || quoted.imageMessage.caption || "";
-          const buffer = await downloadMediaMessage(
+          let buffer = await downloadMediaMessage(
             { message: quotedMsg },
             "buffer",
             {},
@@ -1539,37 +1540,38 @@ gmd(
           if (caption) payload.groupStatusMessage.caption = caption;
         } else if (quoted?.videoMessage) {
           const caption = q || quoted.videoMessage.caption || "";
-          const buffer = await downloadMediaMessage(
+          let buffer = await downloadMediaMessage(
             { message: quotedMsg },
             "buffer",
             {},
           );
+          buffer = await formatVideo(buffer);
           tempFilePath = path.join(tempDir, `status_${Date.now()}.mp4`);
           fs.writeFileSync(tempFilePath, buffer);
           payload.groupStatusMessage.video = { url: tempFilePath };
           if (caption) payload.groupStatusMessage.caption = caption;
         } else if (quoted?.audioMessage) {
-          const buffer = await downloadMediaMessage(
+          let buffer = await downloadMediaMessage(
             { message: quotedMsg },
             "buffer",
             {},
           );
+          buffer = await formatAudio(buffer);
           tempFilePath = path.join(tempDir, `status_${Date.now()}.mp3`);
           fs.writeFileSync(tempFilePath, buffer);
           payload.groupStatusMessage.audio = { url: tempFilePath };
         } else if (quoted?.documentMessage) {
-          const buffer = await downloadMediaMessage(
+          let buffer = await downloadMediaMessage(
             { message: quotedMsg },
             "buffer",
             {},
           );
-          const ext =
-            quoted.documentMessage.fileName?.split(".").pop() || "bin";
+          const ext = quoted.documentMessage.fileName?.split(".").pop() || "bin";
           tempFilePath = path.join(tempDir, `status_${Date.now()}.${ext}`);
           fs.writeFileSync(tempFilePath, buffer);
           payload.groupStatusMessage.document = { url: tempFilePath };
         } else if (quoted?.stickerMessage) {
-          const buffer = await downloadMediaMessage(
+          let buffer = await downloadMediaMessage(
             { message: quotedMsg },
             "buffer",
             {},
@@ -1578,17 +1580,12 @@ gmd(
           fs.writeFileSync(tempFilePath, buffer);
           payload.groupStatusMessage.sticker = { url: tempFilePath };
         } else if (quoted?.conversation || quoted?.extendedTextMessage?.text) {
-          payload.groupStatusMessage.text =
-            quoted.conversation || quoted.extendedTextMessage.text;
+          payload.groupStatusMessage.text = quoted.conversation || quoted.extendedTextMessage.text;
         } else {
           return reply("❌ Unsupported media type for group status.");
         }
 
-        if (
-          q &&
-          !payload.groupStatusMessage.caption &&
-          !payload.groupStatusMessage.text
-        ) {
+        if (q && !payload.groupStatusMessage.caption && !payload.groupStatusMessage.text) {
           payload.groupStatusMessage.caption = q;
         }
       } else {
