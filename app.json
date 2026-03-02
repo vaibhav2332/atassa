@@ -4,48 +4,43 @@
   "description": "Atassa, a Multi Device Whatsapp Bot built by Gifted Tech to Enhance Whatsapp Communication Experience",
   "logo": "https://files.giftedtech.co.ke/image/u90mimage.jpg",
   "keywords": ["atassa", "gifted-baileys", "gifted-btns", "gifted-api"],
-  "stack": "heroku-24",
-  "success_url": "/",
   "env": {
     "SESSION_ID": {
-      "description": "put your SESSION_ID here.",
-      "required" :true,
-      "value": ""
+      "description": "Put your SESSION_ID here",
+      "value": "",
+      "required": true
     },
     "MODE": {
-      "description": "Worktype of your bot. Use public or private, if it is private then only bot number can use it. If public then everyone can use it.",
-      "required" :true,
-      "value": "public"
+      "description": "Bot mode (private or public)",
+      "value": "public",
+      "required": false
     },
     "TIME_ZONE": {
-      "description": "Put TIME_ZONE according to your location",
-      "required" :true,    
-      "value": "Africa/Nairobi"
-    },  
+      "description": "Timezone",
+      "value": "Africa/Nairobi",
+      "required": true
+    },
     "AUTO_LIKE_STATUS": {
-      "description": " Auto Like whatsapp status", 
-      "required" :false,   
-      "value": "true"
-    }, 
+      "description": "Auto like WhatsApp status (true/false)",
+      "value": "true",
+      "required": false
+    },
     "AUTO_READ_STATUS": {
-      "description": "Fill the value true if you want bot to automatically view your Statuses.",
-      "required" :false,
-      "value": "true"
+      "description": "Auto view WhatsApp status (true/false)",
+      "value": "true",
+      "required": false
     }
-  }, 
-  "addons": [
-    {
-      "plan": "heroku-postgresql:basic"
-    } 
-  ],
-  "buildpacks": [
-    { "url": "https://github.com/heroku/heroku-buildpack-nodejs#latest" },
-    { "url": "https://github.com/carlosdommor/heroku-buildpack-ffmpeg-latest" }
-  ],
+  },
   "formation": {
-      "web": {
-          "quantity": 1,
-          "size": "basic"
-      }
-  }
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ],
+  "stack": "heroku-24"
 }
