@@ -40,12 +40,16 @@ const executeAnimeFetch = async (m, sock, category) => {
         const isGif = mediaUrl.toLowerCase().endsWith('.gif');
         const chatId = m.jid || m.chat || m.from || (m.key && m.key.remoteJid);
 
+        // Defensive Quoting: Prevent Baileys crash if the custom message object lacks a 'key'
+        const validQuote = (m && m.key) ? m : undefined;
+        const sendOptions = validQuote ? { quoted: validQuote } : {};
+
         // 3. Native Baileys Media Routing (Bypasses m.send entirely)
         if (sock && typeof sock.sendMessage === 'function') {
             if (isGif) {
-                await sock.sendMessage(chatId, { video: { url: mediaUrl }, gifPlayback: true, caption: cap }, { quoted: m });
+                await sock.sendMessage(chatId, { video: { url: mediaUrl }, gifPlayback: true, caption: cap }, sendOptions);
             } else {
-                await sock.sendMessage(chatId, { image: { url: mediaUrl }, caption: cap }, { quoted: m });
+                await sock.sendMessage(chatId, { image: { url: mediaUrl }, caption: cap }, sendOptions);
             }
         } else if (typeof m.reply === 'function') {
             // Failsafe: If socket is completely hidden, append the URL as a clickable link.
