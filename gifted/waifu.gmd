@@ -1,0 +1,58 @@
+const axios = require('axios');
+const { gifted } = require('../gift/gmdCmds'); // Adjust this path if your folder structure varies
+
+/**
+ * 🌸 SFW ANIME COMMANDS 🌸
+ * Dynamically generated commands for Waifu.pics SFW endpoints.
+ */
+
+const sfwCategories = [
+    'waifu', 'neko', 'shinobu', 'megumin', 'bully', 'cuddle', 'cry', 'hug', 'awoo',
+    'kiss', 'lick', 'pat', 'smug', 'bonk', 'yeet', 'blush', 'smile', 'wave',
+    'highfive', 'handhold', 'nom', 'bite', 'glomp', 'slap', 'kill', 'kick',
+    'happy', 'wink', 'poke', 'dance', 'cringe'
+];
+
+// 🔄 Loop through each item to dynamically register .waifu, .neko, etc. as direct commands!
+sfwCategories.forEach(cmdName => {
+    gifted({
+        pattern: cmdName,
+        alias: [cmdName],
+        desc: `Fetches a random SFW ${cmdName} image/gif.`,
+        react: "✨",
+        type: "anime",
+        filename: __filename
+    },
+    async (m, conn) => { 
+        // 🛠️ Fallbacks for different bot connection object formats
+        const client = conn || m.conn || m.client; 
+        const chatId = m.chat || m.from;
+
+        try {
+            // 🌐 Fetching the API using the specific command name
+            const response = await axios.get(`https://api.waifu.pics/sfw/${cmdName}`);
+            const mediaUrl = response.data.url;
+            
+            // 🎀 Formatting a cute caption
+            const captionText = `*🎀 𝘚𝘍𝘞  𝘈𝘕𝘐𝘔𝘌 : ${cmdName.toUpperCase()} 🎀*\n\n> 𝘗𝘰𝘸𝘦𝘳𝘦𝘥 𝘣𝘺 Gifted By Vaibh`;
+
+            // 🎥 Check if the output is a GIF or an Image
+            if (mediaUrl.endsWith('.gif')) {
+                await client.sendMessage(chatId, { 
+                    video: { url: mediaUrl }, 
+                    gifPlayback: true, 
+                    caption: captionText 
+                }, { quoted: m });
+            } else {
+                await client.sendMessage(chatId, { 
+                    image: { url: mediaUrl }, 
+                    caption: captionText 
+                }, { quoted: m });
+            }
+        } catch (error) {
+            console.error(`[❌] Error fetching ${cmdName}:`, error.message);
+            // ⚠️ Sending an error message if the API is down
+            await m.reply(`*❌ Oops! Couldn't fetch a ${cmdName} right now. The API might be sleeping. 💤*`);
+        }
+    });
+});
