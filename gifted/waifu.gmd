@@ -69,7 +69,15 @@ const executeAnimeFetch = async (m, sock, category) => {
         // 3. Native Baileys Media Routing
         if (sock && typeof sock.sendMessage === 'function') {
             if (isGif) {
-                await sock.sendMessage(chatId, { video: { url: mediaUrl }, gifPlayback: true, caption: cap }, sendOptions);
+                // WhatsApp strictly requires .mp4 format for inline animated videos.
+                // Raw .gif URLs sent as 'video' become broken files (as seen previously).
+                // FIX: We send it as a fully named Document so the phone can preview/open it natively.
+                await sock.sendMessage(chatId, { 
+                    document: { url: mediaUrl }, 
+                    mimetype: 'image/gif', 
+                    fileName: `${category}_action.gif`, 
+                    caption: cap 
+                }, sendOptions);
             } else {
                 await sock.sendMessage(chatId, { image: { url: mediaUrl }, caption: cap }, sendOptions);
             }
