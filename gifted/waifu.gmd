@@ -38,11 +38,31 @@ const executeAnimeFetch = async (m, sock, category) => {
                     `╰━━━━━━━━━━━━━━━┈`;
 
         const isGif = mediaUrl.toLowerCase().endsWith('.gif');
-        const chatId = m.jid || m.chat || m.from || (m.key && m.key.remoteJid);
+        
+        // 1. Strictly extract and validate the Destination JID
+        const rawChatId = m.jid || m.chat || m.from || (m.key && m.key.remoteJid);
+        const chatId = typeof rawChatId === 'string' ? rawChatId : undefined;
 
-        // Defensive Quoting: Prevent Baileys crash if the custom message object lacks a 'key'
-        const validQuote = (m && m.key) ? m : undefined;
-        const sendOptions = validQuote ? { quoted: validQuote } : {};
+        if (!chatId) {
+            console.error(`[Anime Module Error] Failed to resolve a valid chat ID.`);
+            if (typeof m.reply === 'function') m.reply(`❌ *System Alert:* Missing valid Chat ID for media routing.`);
+            return;
+        }
+
+        // 2. Deep Quote Sanitization
+        // Passing the overloaded framework 'm' object directly causes Baileys to crash 
+        // during jidDecode. We must reconstruct a purified WebMessageInfo key.
+        let sendOptions = {};
+        if (m && m.key && m.key.remoteJid && m.key.id) {
+            const cleanKey = {
+                remoteJid: String(m.key.remoteJid),
+                fromMe: Boolean(m.key.fromMe),
+                id: String(m.key.id)
+            };
+            if (m.key.participant) cleanKey.participant = String(m.key.participant);
+            
+            sendOptions.quoted = { key: cleanKey, message: m.message || {} };
+        }
 
         // 3. Native Baileys Media Routing (Bypasses m.send entirely)
         if (sock && typeof sock.sendMessage === 'function') {
