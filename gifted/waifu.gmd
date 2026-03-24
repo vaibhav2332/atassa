@@ -1,9 +1,14 @@
 /**
  * @module AnimeInteractions
  * @description Systematically generates SFW Anime commands using the waifu.pics API.
- * @note Implements deep socket and message-object hunting to ensure foolproof 
- * media routing across heavily modified Baileys wrappers.
+ * @note Implements deep socket hunting and an on-the-fly FFmpeg GIF-to-MP4 converter 
+ * to guarantee flawless, inline animated playback on WhatsApp.
  */
+
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
 
 // 1. Ultra-Resilient Command Registrar Discovery
 let commandRegister;
@@ -14,12 +19,45 @@ try {
     console.error("[Anime Module Alert] Could not load the command system: ", err.message);
 }
 
-// 2. Centralized, Crash-Proof Execution Logic
+// 2. On-The-Fly GIF to MP4 Converter Engine
+const getMp4Buffer = async (gifUrl) => {
+    return new Promise(async (resolve) => {
+        try {
+            const axios = require('axios');
+            const response = await axios.get(gifUrl, { responseType: 'arraybuffer', timeout: 25000 });
+            
+            const id = Date.now() + Math.floor(Math.random() * 10000);
+            const gifPath = path.join(os.tmpdir(), `${id}.gif`);
+            const mp4Path = path.join(os.tmpdir(), `${id}.mp4`);
+
+            fs.writeFileSync(gifPath, response.data);
+
+            // WhatsApp requires yuv420p pixel format and even-numbered dimensions
+            const command = `ffmpeg -i "${gifPath}" -movflags faststart -pix_fmt yuv420p -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" "${mp4Path}"`;
+            
+            exec(command, (error) => {
+                if (error) {
+                    if (fs.existsSync(gifPath)) fs.unlinkSync(gifPath);
+                    resolve(null); // Conversion failed (likely missing ffmpeg)
+                } else {
+                    const buffer = fs.readFileSync(mp4Path);
+                    if (fs.existsSync(gifPath)) fs.unlinkSync(gifPath);
+                    if (fs.existsSync(mp4Path)) fs.unlinkSync(mp4Path);
+                    resolve(buffer); // Success: Returns perfect MP4 buffer
+                }
+            });
+        } catch (err) {
+            console.error(`[Anime Module Error] Media Fetch Failed: ${err.message}`);
+            resolve(null);
+        }
+    });
+};
+
+// 3. Centralized, Crash-Proof Execution Logic
 const executeAnimeFetch = async (m, sock, category) => {
     try {
         let mediaUrl;
 
-        // Defensive Dependency Loading
         try {
             const axios = require('axios');
             const res = await axios.get(`https://api.waifu.pics/sfw/${category}`, { timeout: 15000 });
@@ -39,21 +77,13 @@ const executeAnimeFetch = async (m, sock, category) => {
 
         const isGif = mediaUrl.toLowerCase().endsWith('.gif');
         
-        // 1. Strictly extract and validate the Destination JID
-        // Because of our deep hunter, 'm' is now guaranteed to be the correct object.
+        // Extract and validate Destination JID
         const rawChatId = m.chat || m.from || m.jid || (m.key && m.key.remoteJid) || m.sender;
         const chatId = typeof rawChatId === 'string' ? rawChatId : undefined;
 
-        if (!chatId) {
-            console.error(`[Anime Module Error] Failed to resolve a valid chat ID. m keys: ${Object.keys(m).join(', ')}`);
-            if (m && typeof m.reply === 'function') {
-                // Absolute Failsafe: Send as a link if native media routing is physically impossible
-                return m.reply(`${cap}\n\n🔗 *Media Link:* ${mediaUrl}`);
-            }
-            return;
-        }
+        if (!chatId) return; // Silent fail if chat ID is completely unresolvable
 
-        // 2. Deep Quote Sanitization
+        // Deep Quote Sanitization
         let sendOptions = {};
         if (m && m.key && m.key.remoteJid && m.key.id) {
             const cleanKey = {
@@ -62,62 +92,53 @@ const executeAnimeFetch = async (m, sock, category) => {
                 id: String(m.key.id)
             };
             if (m.key.participant) cleanKey.participant = String(m.key.participant);
-            
             sendOptions.quoted = { key: cleanKey, message: m.message || {} };
         }
 
-        // 3. Native Baileys Media Routing
+        // Native Baileys Media Routing with MP4 Engine
         if (sock && typeof sock.sendMessage === 'function') {
             if (isGif) {
-                // WhatsApp strictly requires .mp4 format for inline animated videos.
-                // Raw .gif URLs sent as 'video' become broken files (as seen previously).
-                // FIX: We send it as a fully named Document so the phone can preview/open it natively.
-                await sock.sendMessage(chatId, { 
-                    document: { url: mediaUrl }, 
-                    mimetype: 'image/gif', 
-                    fileName: `${category}_action.gif`, 
-                    caption: cap 
-                }, sendOptions);
+                // Send a reaction to indicate processing (conversion takes ~1-3 seconds)
+                if (m.key) await sock.sendMessage(chatId, { react: { text: "⏳", key: m.key } });
+
+                const mp4Buffer = await getMp4Buffer(mediaUrl);
+                
+                if (mp4Buffer) {
+                    // Flawless Inline Looping Video (WhatsApp Animated GIF)
+                    await sock.sendMessage(chatId, { video: mp4Buffer, gifPlayback: true, caption: cap }, sendOptions);
+                } else {
+                    // Failsafe: Send as a viewable Static Image inline if FFmpeg is unavailable
+                    await sock.sendMessage(chatId, { image: { url: mediaUrl }, caption: cap }, sendOptions);
+                }
             } else {
+                // Standard Static Image (waifu, neko, shinobu, megumin)
                 await sock.sendMessage(chatId, { image: { url: mediaUrl }, caption: cap }, sendOptions);
             }
         } else if (m && typeof m.reply === 'function') {
             await m.reply(`${cap}\n\n🔗 *Media Link:* ${mediaUrl}`);
-        } else {
-            console.error(`[Anime Module Error] No socket or reply function available to send media.`);
         }
 
     } catch (error) {
         console.error(`[Anime Module Error] Category: ${category} | Msg: ${error.message}`);
-        if (m && typeof m.reply === 'function') m.reply(`⚠️ *Exception Handled:* Error fetching ${category}.\n_Details: ${error.message}_`);
     }
 };
 
 // ==============================================================================
-// 3. EXPLICIT COMMAND REGISTRATIONS WITH DEEP ARGUMENT HUNTING
+// 4. EXPLICIT COMMAND REGISTRATIONS WITH DEEP ARGUMENT HUNTING
 // ==============================================================================
 
-// Helper function to extract the true Baileys socket AND the true message object
 const executeWithSocket = async (arg1, args, category) => {
     let sock = global.conn || global.client || arg1.bot || arg1.client;
-    let m = arg1; // Assume arg1 is the message initially
+    let m = arg1;
 
-    // Combine all incoming arguments to hunt for the socket and true message object
     const allArgs = [arg1, ...args];
-    
     allArgs.forEach(arg => {
         if (arg && typeof arg === 'object' && !Array.isArray(arg)) {
-            // 1. Identify the Socket Object
             if (typeof arg.sendMessage === 'function') sock = arg;
             else if (arg.sock && typeof arg.sock.sendMessage === 'function') sock = arg.sock;
             else if (arg.bot && typeof arg.bot.sendMessage === 'function') sock = arg.bot;
-            else if (arg.client && typeof arg.client.sendMessage === 'function') sock = arg.client;
-
-            // 2. Identify the True Message Object
-            // It searches every argument for Baileys JID properties
-            if (arg.chat || arg.from || arg.jid || (arg.key && arg.key.remoteJid)) {
-                m = arg;
-            }
+            
+            if (arg.chat || arg.from || arg.jid || (arg.key && arg.key.remoteJid)) m = arg;
         }
     });
 
