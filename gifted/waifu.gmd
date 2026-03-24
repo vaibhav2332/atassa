@@ -1,70 +1,80 @@
-const axios = require('axios');
-const { gifted } = require('../gift/gmdCmds'); 
-
 /**
- * 🌸 SFW ANIME COMMANDS 🌸
- * Explicitly mapped for strict menu generators.
+ * @module AnimeInteractions
+ * @description Dynamically generates SFW Anime commands using the waifu.pics API.
+ * Designed for maximum resilience and long-term production use.
  */
 
-// 🛠️ Helper function to handle all the API fetching & sending
-const sendAnimeMedia = async (m, gmd, category) => {
-    // Robust fallback for the bot's connection object
-    const client = gmd || m.client || m.conn || m.bot; 
-    const chatId = m.chat || m.from;
+const axios = require('axios');
+const { gifted } = require('../gift/gmdCmds'); // Importing the core command registry
 
-    try {
-        const response = await axios.get(`https://api.waifu.pics/sfw/${category}`);
-        const mediaUrl = response.data.url;
-        const captionText = `*🎀 𝘚𝘍𝘞  𝘈𝘕𝘐𝘔𝘌 : ${category.toUpperCase()} 🎀*`;
+// 1. Data Management: Array of all requested SFW categories
+const sfwCategories = [
+    "waifu", "neko", "shinobu", "megumin", "bully", "cuddle", "cry",
+    "hug", "awoo", "kiss", "lick", "pat", "smug", "bonk", "yeet",
+    "blush", "smile", "wave", "highfive", "handhold", "nom", "bite",
+    "glomp", "slap", "kill", "kick", "happy", "wink", "poke", "dance", "cringe"
+];
 
-        // 🎥 Send as GIF if it's an action, otherwise send as Image
-        if (mediaUrl.endsWith('.gif')) {
-            await client.sendMessage(chatId, { 
-                video: { url: mediaUrl }, 
-                gifPlayback: true, 
-                caption: captionText 
-            }, { quoted: m });
-        } else {
-            await client.sendMessage(chatId, { 
-                image: { url: mediaUrl }, 
-                caption: captionText 
-            }, { quoted: m });
+// 2. Systematic Generation: Loop through the array to dynamically create 31 commands
+sfwCategories.forEach((category) => {
+    gifted({
+        pattern: category, // The trigger word becomes the exact category (e.g., .waifu, .hug)
+        type: "anime",     // Ensures all 31 commands map correctly to the 'Anime' section of your bot menu
+        category: "anime", // Fallback for various Gifted-MD menu visualizers
+        desc: `Fetches a random SFW ${category} image or GIF from the database.`,
+        react: "✨",      // Visually indicates to the user that the bot is processing the request
+        filename: __filename
+    },
+    async (m, sock, { reply }) => {
+        try {
+            // Defensive Check 1: Safe API Communication
+            const response = await axios.get(`https://api.waifu.pics/sfw/${category}`, {
+                timeout: 10000 // Prevent infinite hangs if the API server drops packets
+            });
+
+            // Defensive Check 2: Payload Validation
+            if (!response.data || !response.data.url) {
+                return reply(`❌ *System Alert:* Failed to retrieve the ${category} media. The API returned an unexpected response.`);
+            }
+
+            const mediaUrl = response.data.url;
+
+            // 3. User Interface (UI) Design
+            // Aesthetically pleasing string structure for a premium user experience
+            const cap = `╭━━━〔 *𝗔𝗡𝗜𝗠𝗘 𝗜𝗡𝗧𝗘𝗥𝗔𝗖𝗧𝗜𝗢𝗡𝗦* 〕━━━┈\n` +
+                        `┃ ◈ *Action:* ${category.charAt(0).toUpperCase() + category.slice(1)}\n` +
+                        `┃ ◈ *Type:* SFW (Safe for Work)\n` +
+                        `┃ ◈ *Requested by:* @${m.sender.split('@')[0]}\n` +
+                        `╰━━━━━━━━━━━━━━━┈`;
+
+            // 4. Intelligent Media Handling
+            // WhatsApp (Baileys) handles static images and GIFs differently. 
+            // We must dynamically assign the correct payload structure based on the file extension.
+            const isGif = mediaUrl.toLowerCase().endsWith('.gif');
+
+            if (isGif) {
+                // Send as an autoplaying loop video (WhatsApp GIF format)
+                await sock.sendMessage(m.chat, {
+                    video: { url: mediaUrl },
+                    gifPlayback: true,
+                    caption: cap,
+                    mentions: [m.sender] // Mentions the user gracefully in the caption
+                }, { quoted: m });
+            } else {
+                // Send as a standard high-quality image
+                await sock.sendMessage(m.chat, {
+                    image: { url: mediaUrl },
+                    caption: cap,
+                    mentions: [m.sender]
+                }, { quoted: m });
+            }
+
+        } catch (error) {
+            // Robust Exception Logging: Never let the bot crash silently
+            console.error(`[API ERROR] Module: Anime | Command: ${category} | Msg: ${error.message}`);
+            
+            // Inform the user gently that the API connection failed
+            reply(`⚠️ *Exception Handled:* An error occurred while reaching the Image Server.\n\n_Details: ${error.message}_`);
         }
-    } catch (error) {
-        console.error(`[❌] Error fetching ${category}:`, error.message);
-        if (m.reply) await m.reply(`*❌ Oops! Couldn't fetch a ${category} right now.*`);
-    }
-};
-
-// 🔄 Explicitly declaring each command so the bot's Menu Generator catches them 100% of the time!
-gifted({ pattern: "waifu", type: "anime", desc: "Fetches a random waifu image." }, async (m, gmd) => sendAnimeMedia(m, gmd, "waifu"));
-gifted({ pattern: "neko", type: "anime", desc: "Fetches a random neko image." }, async (m, gmd) => sendAnimeMedia(m, gmd, "neko"));
-gifted({ pattern: "shinobu", type: "anime", desc: "Fetches a random shinobu image." }, async (m, gmd) => sendAnimeMedia(m, gmd, "shinobu"));
-gifted({ pattern: "megumin", type: "anime", desc: "Fetches a random megumin image." }, async (m, gmd) => sendAnimeMedia(m, gmd, "megumin"));
-gifted({ pattern: "bully", type: "anime", desc: "Sends a bully anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "bully"));
-gifted({ pattern: "cuddle", type: "anime", desc: "Sends a cuddle anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "cuddle"));
-gifted({ pattern: "cry", type: "anime", desc: "Sends a crying anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "cry"));
-gifted({ pattern: "hug", type: "anime", desc: "Sends a hugging anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "hug"));
-gifted({ pattern: "awoo", type: "anime", desc: "Fetches a random awoo image/gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "awoo"));
-gifted({ pattern: "kiss", type: "anime", desc: "Sends a kissing anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "kiss"));
-gifted({ pattern: "lick", type: "anime", desc: "Sends a lick anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "lick"));
-gifted({ pattern: "pat", type: "anime", desc: "Sends a headpat anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "pat"));
-gifted({ pattern: "smug", type: "anime", desc: "Sends a smug anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "smug"));
-gifted({ pattern: "bonk", type: "anime", desc: "Sends a bonk anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "bonk"));
-gifted({ pattern: "yeet", type: "anime", desc: "Sends a yeet anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "yeet"));
-gifted({ pattern: "blush", type: "anime", desc: "Sends a blushing anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "blush"));
-gifted({ pattern: "smile", type: "anime", desc: "Sends a smiling anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "smile"));
-gifted({ pattern: "wave", type: "anime", desc: "Sends a waving anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "wave"));
-gifted({ pattern: "highfive", type: "anime", desc: "Sends a highfive anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "highfive"));
-gifted({ pattern: "handhold", type: "anime", desc: "Sends a handholding anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "handhold"));
-gifted({ pattern: "nom", type: "anime", desc: "Sends a nom anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "nom"));
-gifted({ pattern: "bite", type: "anime", desc: "Sends a biting anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "bite"));
-gifted({ pattern: "glomp", type: "anime", desc: "Sends a glomp anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "glomp"));
-gifted({ pattern: "slap", type: "anime", desc: "Sends a slapping anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "slap"));
-gifted({ pattern: "kill", type: "anime", desc: "Sends a kill anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "kill"));
-gifted({ pattern: "kick", type: "anime", desc: "Sends a kick anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "kick"));
-gifted({ pattern: "happy", type: "anime", desc: "Sends a happy anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "happy"));
-gifted({ pattern: "wink", type: "anime", desc: "Sends a winking anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "wink"));
-gifted({ pattern: "poke", type: "anime", desc: "Sends a poke anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "poke"));
-gifted({ pattern: "dance", type: "anime", desc: "Sends a dancing anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "dance"));
-gifted({ pattern: "cringe", type: "anime", desc: "Sends a cringe anime gif." }, async (m, gmd) => sendAnimeMedia(m, gmd, "cringe"));
+    });
+});
