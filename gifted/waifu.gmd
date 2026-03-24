@@ -1,14 +1,14 @@
 /**
  * @module AnimeInteractions
- * @description Systematically generates SFW & nsfw Anime commands using the waifu.pics API.
- * @note Implements deep socket hunting, FFmpeg GIF-to-MP4 conversion, and a 
- * Multi-Fetch Engine for premium "nsfw" tier commands.
+ * @description Systematically generates SFW Anime commands using the waifu.pics API.
+ * @note Implements deep socket hunting and an on-the-fly FFmpeg GIF-to-MP4 converter 
+ * to guarantee flawless, inline animated playback on WhatsApp.
  */
 
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_nsfwcess');
+const { exec } = require('child_process');
 
 // 1. Ultra-Resilient Command Registrar Discovery
 let commandRegister;
@@ -21,7 +21,7 @@ try {
 
 // 2. On-The-Fly GIF to MP4 Converter Engine
 const getMp4Buffer = async (gifUrl) => {
-    return new nsfwmise(async (resolve) => {
+    return new Promise(async (resolve) => {
         try {
             const axios = require('axios');
             const response = await axios.get(gifUrl, { responseType: 'arraybuffer', timeout: 25000 });
@@ -32,17 +32,18 @@ const getMp4Buffer = async (gifUrl) => {
 
             fs.writeFileSync(gifPath, response.data);
 
+            // WhatsApp requires yuv420p pixel format and even-numbered dimensions
             const command = `ffmpeg -i "${gifPath}" -movflags faststart -pix_fmt yuv420p -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" "${mp4Path}"`;
             
             exec(command, (error) => {
                 if (error) {
                     if (fs.existsSync(gifPath)) fs.unlinkSync(gifPath);
-                    resolve(null);
+                    resolve(null); // Conversion failed (likely missing ffmpeg)
                 } else {
                     const buffer = fs.readFileSync(mp4Path);
                     if (fs.existsSync(gifPath)) fs.unlinkSync(gifPath);
                     if (fs.existsSync(mp4Path)) fs.unlinkSync(mp4Path);
-                    resolve(buffer);
+                    resolve(buffer); // Success: Returns perfect MP4 buffer
                 }
             });
         } catch (err) {
@@ -52,12 +53,11 @@ const getMp4Buffer = async (gifUrl) => {
     });
 };
 
-// ==============================================================================
-// 3A. STANDARD EXECUTION LOGIC (Single Fetch - SFW)
-// ==============================================================================
+// 3. Centralized, Crash-Proof Execution Logic
 const executeAnimeFetch = async (m, sock, category) => {
     try {
         let mediaUrl;
+
         try {
             const axios = require('axios');
             const res = await axios.get(`https://api.waifu.pics/sfw/${category}`, { timeout: 15000 });
@@ -70,143 +70,82 @@ const executeAnimeFetch = async (m, sock, category) => {
 
         if (!mediaUrl) return (m.reply ? m.reply(`❌ *System Alert:* Failed to retrieve the ${category} media.`) : null);
 
-        const cap = `╭━━━〔 *𝗔𝗡𝗜𝗠𝗘 𝗜𝗡𝗧𝗘𝗥𝗔𝗖𝗧𝗜𝗢𝗡𝗦* 〕━━━┈\n┃ ◈ *Action:* ${category.charAt(0).toUpperCase() + category.slice(1)}\n┃ ◈ *Type:* Standard SFW\n╰━━━━━━━━━━━━━━━┈`;
+        const cap = `╭━━━〔 *𝗔𝗡𝗜𝗠𝗘 𝗜𝗡𝗧𝗘𝗥𝗔𝗖𝗧𝗜𝗢𝗡𝗦* 〕━━━┈\n` +
+                    `┃ ◈ *Action:* ${category.charAt(0).toUpperCase() + category.slice(1)}\n` +
+                    `┃ ◈ *Type:* SFW (Safe for Work)\n` +
+                    `╰━━━━━━━━━━━━━━━┈`;
+
         const isGif = mediaUrl.toLowerCase().endsWith('.gif');
         
+        // Extract and validate Destination JID
         const rawChatId = m.chat || m.from || m.jid || (m.key && m.key.remoteJid) || m.sender;
         const chatId = typeof rawChatId === 'string' ? rawChatId : undefined;
-        if (!chatId) return;
 
+        if (!chatId) return; // Silent fail if chat ID is completely unresolvable
+
+        // Deep Quote Sanitization
         let sendOptions = {};
         if (m && m.key && m.key.remoteJid && m.key.id) {
-            const cleanKey = { remoteJid: String(m.key.remoteJid), fromMe: Boolean(m.key.fromMe), id: String(m.key.id) };
+            const cleanKey = {
+                remoteJid: String(m.key.remoteJid),
+                fromMe: Boolean(m.key.fromMe),
+                id: String(m.key.id)
+            };
             if (m.key.participant) cleanKey.participant = String(m.key.participant);
             sendOptions.quoted = { key: cleanKey, message: m.message || {} };
         }
 
+        // Native Baileys Media Routing with MP4 Engine
         if (sock && typeof sock.sendMessage === 'function') {
             if (isGif) {
+                // Send a reaction to indicate processing (conversion takes ~1-3 seconds)
                 if (m.key) await sock.sendMessage(chatId, { react: { text: "⏳", key: m.key } });
+
                 const mp4Buffer = await getMp4Buffer(mediaUrl);
+                
                 if (mp4Buffer) {
+                    // Flawless Inline Looping Video (WhatsApp Animated GIF)
                     await sock.sendMessage(chatId, { video: mp4Buffer, gifPlayback: true, caption: cap }, sendOptions);
                 } else {
+                    // Failsafe: Send as a viewable Static Image inline if FFmpeg is unavailable
                     await sock.sendMessage(chatId, { image: { url: mediaUrl }, caption: cap }, sendOptions);
                 }
             } else {
+                // Standard Static Image (waifu, neko, shinobu, megumin)
                 await sock.sendMessage(chatId, { image: { url: mediaUrl }, caption: cap }, sendOptions);
             }
         } else if (m && typeof m.reply === 'function') {
             await m.reply(`${cap}\n\n🔗 *Media Link:* ${mediaUrl}`);
         }
+
     } catch (error) {
         console.error(`[Anime Module Error] Category: ${category} | Msg: ${error.message}`);
     }
 };
 
 // ==============================================================================
-// 3B. nsfw MULTI-FETCH ENGINE (Multiple Fetch - nsfw)
+// 4. EXPLICIT COMMAND REGISTRATIONS WITH DEEP ARGUMENT HUNTING
 // ==============================================================================
-const executeMultinsfwFetch = async (m, sock, category) => {
-    try {
-        const rawChatId = m.chat || m.from || m.jid || (m.key && m.key.remoteJid) || m.sender;
-        const chatId = typeof rawChatId === 'string' ? rawChatId : undefined;
-        if (!chatId) return;
 
-        let sendOptions = {};
-        if (m && m.key && m.key.remoteJid && m.key.id) {
-            const cleanKey = { remoteJid: String(m.key.remoteJid), fromMe: Boolean(m.key.fromMe), id: String(m.key.id) };
-            if (m.key.participant) cleanKey.participant = String(m.key.participant);
-            sendOptions.quoted = { key: cleanKey, message: m.message || {} };
-        }
-
-        if (sock && typeof sock.sendMessage === 'function' && m.key) {
-            await sock.sendMessage(chatId, { react: { text: "🔞", key: m.key } });
-        }
-
-        const fetchCount = 3; // Defines how many images/GIFs are sent per command
-        const axios = require('axios');
-
-        // Sequential looping to respect API rate limits and nsfwcess FFmpeg safely
-        for (let i = 1; i <= fetchCount; i++) {
-            try {
-                const res = await axios.get(`https://api.waifu.pics/nsfw/${category}`, { timeout: 15000 });
-                const mediaUrl = res.data.url;
-                if (!mediaUrl) continue;
-
-                const cap = `╭━━━〔 *𝗣𝗥𝗢 𝗔𝗡𝗜𝗠𝗘 𝗗𝗥𝗢𝗣* 〕━━━┈\n┃ ◈ *Action:* ${category.charAt(0).toUpperCase() + category.slice(1)}\n┃ ◈ *Tier:* nsfw (Multi-Fetch ${i}/${fetchCount})\n╰━━━━━━━━━━━━━━━┈`;
-                const isGif = mediaUrl.toLowerCase().endsWith('.gif');
-
-                if (sock && typeof sock.sendMessage === 'function') {
-                    if (isGif) {
-                        const mp4Buffer = await getMp4Buffer(mediaUrl);
-                        if (mp4Buffer) {
-                            await sock.sendMessage(chatId, { video: mp4Buffer, gifPlayback: true, caption: cap }, sendOptions);
-                        } else {
-                            await sock.sendMessage(chatId, { image: { url: mediaUrl }, caption: cap }, sendOptions);
-                        }
-                    } else {
-                        await sock.sendMessage(chatId, { image: { url: mediaUrl }, caption: cap }, sendOptions);
-                    }
-                }
-            } catch (fetchErr) {
-                console.error(`[nsfw Fetch Error] Multi-fetch failed on iteration ${i}: ${fetchErr.message}`);
-            }
-        }
-    } catch (error) {
-        console.error(`[Anime nsfw Module Error] Category: ${category} | Msg: ${error.message}`);
-    }
-};
-
-// ==============================================================================
-// 4. DEEP ARGUMENT HUNTERS
-// ==============================================================================
 const executeWithSocket = async (arg1, args, category) => {
     let sock = global.conn || global.client || arg1.bot || arg1.client;
     let m = arg1;
+
     const allArgs = [arg1, ...args];
     allArgs.forEach(arg => {
         if (arg && typeof arg === 'object' && !Array.isArray(arg)) {
             if (typeof arg.sendMessage === 'function') sock = arg;
             else if (arg.sock && typeof arg.sock.sendMessage === 'function') sock = arg.sock;
             else if (arg.bot && typeof arg.bot.sendMessage === 'function') sock = arg.bot;
+            
             if (arg.chat || arg.from || arg.jid || (arg.key && arg.key.remoteJid)) m = arg;
         }
     });
+
     await executeAnimeFetch(m, sock, category);
 };
 
-const executensfwWithSocket = async (arg1, args, category) => {
-    let sock = global.conn || global.client || arg1.bot || arg1.client;
-    let m = arg1;
-    const allArgs = [arg1, ...args];
-    allArgs.forEach(arg => {
-        if (arg && typeof arg === 'object' && !Array.isArray(arg)) {
-            if (typeof arg.sendMessage === 'function') sock = arg;
-            else if (arg.sock && typeof arg.sock.sendMessage === 'function') sock = arg.sock;
-            else if (arg.bot && typeof arg.bot.sendMessage === 'function') sock = arg.bot;
-            if (arg.chat || arg.from || arg.jid || (arg.key && arg.key.remoteJid)) m = arg;
-        }
-    });
-    await executeMultinsfwFetch(m, sock, category);
-};
-
-// ==============================================================================
-// 5. EXPLICIT COMMAND REGISTRATIONS
-// ==============================================================================
-
 if (typeof commandRegister === 'function') {
-    // --------------------------------------------------------------------------
-    // NEW nsfw COMMANDS (Multiple Responses, nsfw API Type)
-    // --------------------------------------------------------------------------
-    commandRegister({ pattern: "nwaifu", cmdname: "nwaifu", alias: ["nwaifu"], type: "nsfw", category: "nsfw", desc: "Multi-fetches nsfw waifu images", react: "🔞", filename: __filename }, async (arg1, ...args) => { await executensfwWithSocket(arg1, args, "waifu"); });
-    commandRegister({ pattern: "nneko", cmdname: "nneko", alias: ["nneko"], type: "nsfw", category: "nsfw", desc: "Multi-fetches nsfw neko images", react: "🔞", filename: __filename }, async (arg1, ...args) => { await executensfwWithSocket(arg1, args, "neko"); });
-    commandRegister({ pattern: "ntrap", cmdname: "ntrap", alias: ["ntrap"], type: "nsfw", category: "nsfw", desc: "Multi-fetches nsfw trap interactions", react: "🔞", filename: __filename }, async (arg1, ...args) => { await executensfwWithSocket(arg1, args, "trap"); });
-    commandRegister({ pattern: "nblowjob", cmdname: "nblowjob", alias: ["nblowjob"], type: "nsfw", category: "nsfw", desc: "Multi-fetches nsfw blowjob interactions", react: "🔞", filename: __filename }, async (arg1, ...args) => { await executensfwWithSocket(arg1, args, "blowjob"); });
-
-    // --------------------------------------------------------------------------
-    // STANDARD SFW COMMANDS (Single Response, SFW API Type)
-    // --------------------------------------------------------------------------
     commandRegister({ pattern: "waifu", cmdname: "waifu", alias: ["waifu"], type: "anime", category: "anime", desc: "Fetches SFW waifu image", react: "✨", filename: __filename }, async (arg1, ...args) => { await executeWithSocket(arg1, args, "waifu"); });
     commandRegister({ pattern: "neko", cmdname: "neko", alias: ["neko"], type: "anime", category: "anime", desc: "Fetches SFW neko image", react: "✨", filename: __filename }, async (arg1, ...args) => { await executeWithSocket(arg1, args, "neko"); });
     commandRegister({ pattern: "shinobu", cmdname: "shinobu", alias: ["shinobu"], type: "anime", category: "anime", desc: "Fetches SFW shinobu image", react: "✨", filename: __filename }, async (arg1, ...args) => { await executeWithSocket(arg1, args, "shinobu"); });
@@ -230,7 +169,7 @@ if (typeof commandRegister === 'function') {
     commandRegister({ pattern: "nom", cmdname: "nom", alias: ["nom"], type: "anime", category: "anime", desc: "Fetches SFW nom interaction", react: "✨", filename: __filename }, async (arg1, ...args) => { await executeWithSocket(arg1, args, "nom"); });
     commandRegister({ pattern: "bite", cmdname: "bite", alias: ["bite"], type: "anime", category: "anime", desc: "Fetches SFW bite interaction", react: "✨", filename: __filename }, async (arg1, ...args) => { await executeWithSocket(arg1, args, "bite"); });
     commandRegister({ pattern: "glomp", cmdname: "glomp", alias: ["glomp"], type: "anime", category: "anime", desc: "Fetches SFW glomp interaction", react: "✨", filename: __filename }, async (arg1, ...args) => { await executeWithSocket(arg1, args, "glomp"); });
-    commandRegister({ pattern: "blowjob", cmdname: "blowjob", alias: ["blowjob"], type: "anime", category: "anime", desc: "Fetches SFW blowjob interaction", react: "✨", filename: __filename }, async (arg1, ...args) => { await executeWithSocket(arg1, args, "blowjob"); });
+    commandRegister({ pattern: "slap", cmdname: "slap", alias: ["slap"], type: "anime", category: "anime", desc: "Fetches SFW slap interaction", react: "✨", filename: __filename }, async (arg1, ...args) => { await executeWithSocket(arg1, args, "slap"); });
     commandRegister({ pattern: "kill", cmdname: "kill", alias: ["kill"], type: "anime", category: "anime", desc: "Fetches SFW kill interaction", react: "✨", filename: __filename }, async (arg1, ...args) => { await executeWithSocket(arg1, args, "kill"); });
     commandRegister({ pattern: "kick", cmdname: "kick", alias: ["kick"], type: "anime", category: "anime", desc: "Fetches SFW kick interaction", react: "✨", filename: __filename }, async (arg1, ...args) => { await executeWithSocket(arg1, args, "kick"); });
     commandRegister({ pattern: "happy", cmdname: "happy", alias: ["happy"], type: "anime", category: "anime", desc: "Fetches SFW happy interaction", react: "✨", filename: __filename }, async (arg1, ...args) => { await executeWithSocket(arg1, args, "happy"); });
@@ -239,5 +178,5 @@ if (typeof commandRegister === 'function') {
     commandRegister({ pattern: "dance", cmdname: "dance", alias: ["dance"], type: "anime", category: "anime", desc: "Fetches SFW dance interaction", react: "✨", filename: __filename }, async (arg1, ...args) => { await executeWithSocket(arg1, args, "dance"); });
     commandRegister({ pattern: "cringe", cmdname: "cringe", alias: ["cringe"], type: "anime", category: "anime", desc: "Fetches SFW cringe interaction", react: "✨", filename: __filename }, async (arg1, ...args) => { await executeWithSocket(arg1, args, "cringe"); });
 } else {
-    console.error("❌ CRITICAL: The Anime module failed to map the command registration function nsfwperly.");
+    console.error("❌ CRITICAL: The Anime module failed to map the command registration function properly.");
 }
