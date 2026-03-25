@@ -70,10 +70,7 @@ const executeAnimeFetch = async (m, sock, category) => {
 
         if (!mediaUrl) return (m.reply ? m.reply(`❌ *System Alert:* Failed to retrieve the ${category} media.`) : null);
 
-        const cap = `╭━━━〔 *𝗔𝗡𝗜𝗠𝗘 𝗜𝗡𝗧𝗘𝗥𝗔𝗖𝗧𝗜𝗢𝗡𝗦* 〕━━━┈\n` +
-                    `┃ ◈ *Action:* ${category.charAt(0).toUpperCase() + category.slice(1)}\n` +
-                    `┃ ◈ *Type:* SFW (Safe for Work)\n` +
-                    `╰━━━━━━━━━━━━━━━┈`;
+        const cap = `> ${category.charAt(0).toUpperCase() + category.slice(1)}\n`;
 
         const isGif = mediaUrl.toLowerCase().endsWith('.gif');
         
@@ -177,10 +174,7 @@ const executeProAnimeFetch = async (m, sock, category) => {
             const mediaUrl = mediaUrls[i];
             
             // Enhanced Pro UI Elements
-            const cap = `╭━━━〔 *𝗣𝗥𝗢 𝗔𝗡𝗜𝗠𝗘* 〕━━━┈\n` +
-                        `┃ ◈ *Action:* ${category.charAt(0).toUpperCase() + category.slice(1)} (Pro)\n` +
-                        `┃ ◈ *Request:* ${i + 1} of ${mediaUrls.length}\n` +
-                        `╰━━━━━━━━━━━━━━━┈`;
+            const cap = `┃ ◈ ${category.charAt(0).toUpperCase() + category.slice(1)} (Pro)\n`;
 
             const isGif = mediaUrl.toLowerCase().endsWith('.gif');
 
