@@ -1,0 +1,1393 @@
+/**
+ * @module AIGems
+ * @description Full AI Suite — Gem Personas, QuillBot Brain, Infip Image Gen,
+ *              Dynamic Profile, Chat Autopilot, API Monitoring.
+ *              Converted from Python userbot to Atassa Bulletproof Framework.
+ * @note Built using the Atassa Bulletproof Framework architecture.
+ */
+
+// ==============================================================================
+// 1. DYNAMIC REGISTRAR (Do not modify)
+// ==============================================================================
+let commandRegister;
+try {
+    const cmdSys = require('../gift/gmdCmds');
+    commandRegister = cmdSys.gifted || cmdSys.gmd || cmdSys.cmd || cmdSys.smd || cmdSys.Module || cmdSys;
+} catch (err) {
+    console.error('[AIGems] Could not load command system:', err.message);
+}
+
+// ==============================================================================
+// 2. DEPENDENCIES
+// ==============================================================================
+const axios  = require('axios');
+const fs     = require('fs');
+const fsp    = require('fs').promises;
+const path   = require('path');
+const os     = require('os');
+const { exec } = require('child_process');
+
+let Database;
+try { Database = require('better-sqlite3'); } catch(e) {
+    console.error('[AIGems] better-sqlite3 not found:', e.message);
+}
+
+// ==============================================================================
+// 3. CORE UTILITIES (Do not modify)
+// ==============================================================================
+const resolveContext = (arg1, args) => {
+    let sock = global.conn || global.client || arg1.bot || arg1.client;
+    let m = arg1;
+    const allArgs = [arg1, ...args];
+    allArgs.forEach(arg => {
+        if (arg && typeof arg === 'object' && !Array.isArray(arg)) {
+            if (typeof arg.sendMessage === 'function') sock = arg;
+            else if (arg.sock && typeof arg.sock.sendMessage === 'function') sock = arg.sock;
+            else if (arg.bot && typeof arg.bot.sendMessage === 'function') sock = arg.bot;
+            if (arg.chat || arg.from || arg.jid || (arg.key && arg.key.remoteJid)) m = arg;
+        }
+    });
+    return { m, sock };
+};
+
+const buildSafeQuote = (m) => {
+    if (!m || !m.key || !m.key.remoteJid || !m.key.id) return {};
+    const cleanKey = {
+        remoteJid: String(m.key.remoteJid),
+        fromMe:    Boolean(m.key.fromMe),
+        id:        String(m.key.id)
+    };
+    if (m.key.participant) cleanKey.participant = String(m.key.participant);
+    return { quoted: { key: cleanKey, message: m.message || {} } };
+};
+
+// ==============================================================================
+// 4. CONFIGURATION  (preserve original credentials exactly)
+// ==============================================================================
+const CFG = {
+    // QuillBot AI cookies & headers (DO NOT CHANGE)
+    QB_COOKIES: {
+        'abIDV2': '546',
+        'anonID': 'f7ceed385778e221',
+        'premium': 'false',
+        'acceptedPremiumModesTnc': 'false',
+        '_sp_ses.48cd': '*',
+        'connect.sid': 's%3AoNTyr66sFMpJww2YC1k9jsS5rG8gfAh_.Sm0N0bBqdEBKfsYVLxJ%2FePg%2B%2FyDjynTPY69eA57QGIk',
+        'qdid': '78e86ed47333249550c398b65d45ad12',
+        'authenticated': 'true',
+        '_sp_id.48cd': '37c7e1f4-cd04-4797-afdf-d0b8e6ae880f.1760000217.3.1765560556.1765046295'
+    },
+    QB_HEADERS: {
+        'accept': 'text/event-stream',
+        'accept-language': 'en-US,en;q=0.7',
+        'content-type': 'application/json',
+        'origin': 'https://quillbot.com',
+        'referer': 'https://quillbot.com/ai-chat',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+        'webapp-version': '38.25.1'
+    },
+
+    // Infip Image API (DO NOT CHANGE)
+    INFIP_BASE: 'https://api.infip.pro',
+    INFIP_KEY:  process.env.INFIP_API_KEY || `infip-${['4ccc6287','30f9b23c','820535e7','30a7d4bc','551dc9e9'][Math.floor(Math.random()*5)]}`,
+
+    // Image defaults
+    IMG_MODEL:   'phoenix',
+    IMG_SIZE:    '1024x1024',
+    IMG_COUNT:   1,
+    IMG_QUALITY: 'standard',
+    IMG_STYLE:   'vivid',
+
+    IMG_MODELS: {
+        'flux-schnell': { tier:'free', desc:'Fast Flux model' },
+        'flux2-dev':    { tier:'free', desc:'Flux 2 Development' },
+        'flux2-klein-9b': { tier:'free', desc:'Flux 2 Klein 9B' },
+        'sdxl':         { tier:'free', desc:'Stable Diffusion XL' },
+        'sdxl-lite':    { tier:'free', desc:'Lightweight SDXL' },
+        'dreamshaper':  { tier:'free', desc:'Artistic DreamShaper' },
+        'phoenix':      { tier:'free', desc:'Phoenix model' },
+        'lucid-origin': { tier:'free', desc:'Lucid Origin' },
+        'z-image-turbo':{ tier:'free', desc:'Fast generation', async:true },
+        'nbpro':        { tier:'pro',  desc:'Professional quality', async:true },
+        'nano-banana':  { tier:'pro',  desc:'High-end model', async:true },
+        'qwen':         { tier:'free', desc:'Qwen model', async:true },
+        'img3':         { tier:'free', desc:'Basic generation' },
+        'img4':         { tier:'free', desc:'Enhanced basic' }
+    },
+
+    // Limits
+    MAX_RPM:     60,
+    MAX_RPH:     1000,
+    MAX_RETRIES: 3,
+    TIMEOUT:     60000,
+    HISTORY_CAP: 30,
+    CACHE_TTL:   3600,
+    IMGBB_KEY:   'afcf96b3fa068c1ce3ea7f5d90b2c849'   // DO NOT CHANGE
+};
+
+// ==============================================================================
+// 5. SQLITE DATABASE (Gem storage)
+// ==============================================================================
+const DB_PATH = path.join(__dirname, '..', 'gift', 'database', 'aigems.db');
+
+let _db = null;
+const getDB = () => {
+    if (_db) return _db;
+    if (!Database) throw new Error('better-sqlite3 not available');
+    _db = new Database(DB_PATH);
+    _db.exec(`
+        CREATE TABLE IF NOT EXISTS gems (
+            name    TEXT PRIMARY KEY,
+            content TEXT NOT NULL,
+            created INTEGER DEFAULT (strftime('%s','now'))
+        );
+        CREATE TABLE IF NOT EXISTS pfp_history (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            filepath  TEXT,
+            prompt    TEXT,
+            ts        INTEGER DEFAULT (strftime('%s','now'))
+        );
+        CREATE TABLE IF NOT EXISTS profile_log (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            type    TEXT,
+            content TEXT,
+            ts      INTEGER DEFAULT (strftime('%s','now'))
+        );
+    `);
+    return _db;
+};
+
+const DB = {
+    gemSave:   (name, content)    => getDB().prepare('INSERT OR REPLACE INTO gems(name,content) VALUES(?,?)').run(name.toLowerCase(), content),
+    gemGet:    (name)             => getDB().prepare('SELECT content FROM gems WHERE name=?').get(name.toLowerCase())?.content || null,
+    gemDel:    (name)             => getDB().prepare('DELETE FROM gems WHERE name=?').run(name.toLowerCase()).changes > 0,
+    gemList:   ()                 => getDB().prepare('SELECT name FROM gems ORDER BY name').all().map(r => r.name),
+    logProfile:(type,content)    => getDB().prepare('INSERT INTO profile_log(type,content) VALUES(?,?)').run(type, content),
+    profileHistory:(type,limit)  => getDB().prepare('SELECT content FROM profile_log WHERE type=? ORDER BY ts DESC LIMIT ?').all(type, limit).map(r=>r.content),
+    savePfp:   (fp, prompt)      => getDB().prepare('INSERT INTO pfp_history(filepath,prompt) VALUES(?,?)').run(fp, prompt),
+    pfpHistory:(limit)           => getDB().prepare('SELECT filepath,prompt,ts FROM pfp_history ORDER BY ts DESC LIMIT ?').all(limit)
+};
+
+// ==============================================================================
+// 6. GLOBAL STATE (Active modes, history, cache)
+// ==============================================================================
+const STATE = {
+    dmMode:       false,
+    dmGem:        null,
+    activeChats:  {},   // chatId → { gem, history[] }
+    activeTargets:{},   // userId → { gem, history[] }
+    stalkTargets: {},   // userId → { gem, history[] }
+    autoEnhance:  true,
+    autoProfile:  false,
+    profileInterval: 3600 * 1000,
+    _profileTimer: null,
+
+    imgCache: {},       // prompt_key → { urls[], ts }
+    apiRPM:   [],       // timestamps for rate limiting
+    apiRPH:   [],
+    apiStats: { ai:0, image:0, errors:0 }
+};
+
+const DEFAULT_PERSONA =
+    'You are a witty, slightly sarcastic but helpful assistant. ' +
+    'Keep responses short, casual. Recall details from Chat History provided.';
+
+// ==============================================================================
+// 7. RATE LIMITER
+// ==============================================================================
+const checkRate = () => {
+    const now = Date.now();
+    STATE.apiRPM = STATE.apiRPM.filter(t => now - t < 60000);
+    STATE.apiRPH = STATE.apiRPH.filter(t => now - t < 3600000);
+    return STATE.apiRPM.length < CFG.MAX_RPM && STATE.apiRPH.length < CFG.MAX_RPH;
+};
+const recordReq = (type='ai') => {
+    const now = Date.now();
+    STATE.apiRPM.push(now);
+    STATE.apiRPH.push(now);
+    STATE.apiStats[type] = (STATE.apiStats[type] || 0) + 1;
+};
+
+// ==============================================================================
+// 8. QUILLBOT AI CLIENT
+// ==============================================================================
+const cookieStr = Object.entries(CFG.QB_COOKIES).map(([k,v])=>`${k}=${v}`).join('; ');
+
+const cleanAIText = (text) => {
+    if (!text) return '';
+    return text
+        .replace(/\\\(/g,'').replace(/\\\)/g,'')
+        .replace(/\\\[/g,'').replace(/\\\]/g,'')
+        .replace(/\\([a-zA-Z])/g,'$1')
+        .trim();
+};
+
+const callAI = async (prompt, imageUrls=[]) => {
+    if (!checkRate()) return '⚠️ Rate limit reached. Please wait a moment.';
+
+    const filesPayload = imageUrls.map(url => ({
+        url, mimeType:'image/jpeg', name:'image.jpg'
+    }));
+
+    const payload = {
+        stream: true,
+        message: { role:'user', content:prompt, files:filesPayload },
+        product: 'ai-chat',
+        prompt: { id:'ai_chat' },
+        tools: []
+    };
+
+    for (let attempt = 0; attempt < CFG.MAX_RETRIES; attempt++) {
+        try {
+            recordReq('ai');
+            const response = await axios.post(
+                'https://quillbot.com/api/raven/quill-chat/responses',
+                payload,
+                {
+                    headers: { ...CFG.QB_HEADERS, 'cookie': cookieStr },
+                    responseType: 'stream',
+                    timeout: CFG.TIMEOUT
+                }
+            );
+
+            let fullText = '';
+            await new Promise((resolve, reject) => {
+                response.data.on('data', chunk => {
+                    const lines = chunk.toString().split('\n');
+                    for (const line of lines) {
+                        if (line.startsWith('data: {') && line.includes('"chunk":"')) {
+                            try {
+                                const obj = JSON.parse(line.slice(6));
+                                fullText += obj.chunk || '';
+                            } catch(_) {}
+                        }
+                    }
+                });
+                response.data.on('end', resolve);
+                response.data.on('error', reject);
+            });
+
+            if (!fullText.trim()) {
+                STATE.apiStats.errors++;
+                if (attempt < CFG.MAX_RETRIES - 1) { await delay(1000 * (attempt+1)); continue; }
+                return '⚠️ Empty response from AI service.';
+            }
+            return cleanAIText(fullText);
+
+        } catch (err) {
+            STATE.apiStats.errors++;
+            if (attempt < CFG.MAX_RETRIES - 1) { await delay(1000 * (2**attempt)); continue; }
+            return `⚠️ Neural Link Severed — ${err.message}. Check cookies.`;
+        }
+    }
+    return '⚠️ AI service unavailable after retries.';
+};
+
+// ==============================================================================
+// 9. IMGBB UPLOADER (for vision)
+// ==============================================================================
+const uploadToImgBB = async (filePath) => {
+    if (!fs.existsSync(filePath)) return null;
+    try {
+        const FormData = require('form-data');
+        const form = new FormData();
+        form.append('image', fs.createReadStream(filePath));
+        const res = await axios.post(
+            `https://api.imgbb.com/1/upload?key=${CFG.IMGBB_KEY}&expiration=600`,
+            form, { headers: form.getHeaders(), timeout: 30000 }
+        );
+        return res.data?.data?.url || null;
+    } catch(e) {
+        STATE.apiStats.errors++;
+        return null;
+    }
+};
+
+// ==============================================================================
+// 10. INFIP IMAGE GENERATOR
+// ==============================================================================
+let infipKey = CFG.INFIP_KEY;
+let infipKeyTs = 0;
+
+const ensureInfipKey = async () => {
+    if (infipKey && (Date.now() - infipKeyTs < 300000)) return true;
+    try {
+        const res = await axios.post(`${CFG.INFIP_BASE}/v1/api-keys`, {}, { timeout:20000 });
+        if (res.status === 200 && res.data?.api_key) {
+            infipKey = res.data.api_key;
+            infipKeyTs = Date.now();
+            return true;
+        }
+    } catch(_) {}
+    // Try with existing key
+    try {
+        const res = await axios.get(`${CFG.INFIP_BASE}/v1/models`, {
+            headers: { Authorization: `Bearer ${infipKey}` }, timeout:15000
+        });
+        if (res.status === 200) { infipKeyTs = Date.now(); return true; }
+    } catch(_) {}
+    return false;
+};
+
+const generateImage = async (prompt, opts={}) => {
+    if (!(await ensureInfipKey())) return [];
+    if (!checkRate()) return [];
+
+    // Cache check
+    const cacheKey = `${prompt}_${opts.model||CFG.IMG_MODEL}_${opts.size||CFG.IMG_SIZE}`;
+    const cached = STATE.imgCache[cacheKey];
+    if (cached && (Date.now() - cached.ts < CFG.CACHE_TTL * 1000)) return cached.urls;
+
+    const payload = {
+        model:           opts.model   || CFG.IMG_MODEL,
+        prompt,
+        n:               Math.min(opts.count || CFG.IMG_COUNT, 4),
+        size:            opts.size    || CFG.IMG_SIZE,
+        response_format: 'url',
+        quality:         opts.quality || CFG.IMG_QUALITY,
+        style:           opts.style   || CFG.IMG_STYLE
+    };
+
+    try {
+        recordReq('image');
+        const res = await axios.post(`${CFG.INFIP_BASE}/v1/images/generations`, payload, {
+            headers: {
+                Authorization: `Bearer ${infipKey}`,
+                'Content-Type': 'application/json'
+            },
+            timeout: CFG.TIMEOUT
+        });
+        const urls = (res.data?.data || []).map(d => d.url);
+        if (urls.length) STATE.imgCache[cacheKey] = { urls, ts: Date.now() };
+        return urls;
+    } catch(e) {
+        STATE.apiStats.errors++;
+        return [];
+    }
+};
+
+const enhancePrompt = async (prompt) => {
+    const enhanced = await callAI(
+        `Enhance this image generation prompt for better AI art results. ` +
+        `More descriptive, same intent. Return ONLY the enhanced prompt:\n\n${prompt}`
+    );
+    return (enhanced && !enhanced.startsWith('⚠️')) ? enhanced : prompt;
+};
+
+// ==============================================================================
+// 11. GEM / HISTORY HELPERS
+// ==============================================================================
+const addHistory = (ctx, role, content) => {
+    if (!ctx.history) ctx.history = [];
+    const ts = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+    ctx.history.push(`[${ts}] ${role}: ${content}`);
+    if (ctx.history.length > CFG.HISTORY_CAP)
+        ctx.history = ctx.history.slice(-CFG.HISTORY_CAP);
+};
+
+const buildPrompt = (system, history, input) =>
+    `SYSTEM INSTRUCTIONS:\n${system}\n\n` +
+    `--- CONVERSATION MEMORY ---\n${history.join('\n')}\n` +
+    `---------------------------\n` +
+    `LATEST MESSAGE: ${input}\n` +
+    `YOUR REPLY:`;
+
+// ==============================================================================
+// 12. HUMAN BEHAVIOUR SIMULATION (typing delay)
+// ==============================================================================
+const delay = (ms) => new Promise(r => setTimeout(r, ms));
+const randomBetween = (a,b) => Math.random()*(b-a)+a;
+
+const simulateTyping = async (sock, chatId, text) => {
+    if (!text) return;
+    const wpm   = randomBetween(5,9);
+    const dur   = Math.min(text.length / wpm, 10);
+    try {
+        await sock.sendPresenceUpdate('composing', chatId);
+        await delay(Math.max(dur * 1000, 1000));
+        await sock.sendPresenceUpdate('paused', chatId);
+    } catch(_) {}
+};
+
+// ==============================================================================
+// 13. WHATSAPP PROFILE UPDATER
+// ==============================================================================
+const updateWAName = async (sock, name) => {
+    try {
+        await sock.updateProfileName(name);
+        return true;
+    } catch(e) {
+        // Fallback IQ node approach (Baileys low-level)
+        try {
+            await sock.query({
+                tag:'iq',
+                attrs:{to:'s.whatsapp.net',type:'set',xmlns:'vcard'},
+                content:[{
+                    tag:'vcard',attrs:{},
+                    content:Buffer.from(`BEGIN:VCARD\nVERSION:3.0\nFN:${name}\nEND:VCARD`)
+                }]
+            });
+            return true;
+        } catch(_){ return false; }
+    }
+};
+
+const updateWABio = async (sock, bio) => {
+    try {
+        await sock.updateProfileStatus(bio);
+        return true;
+    } catch(e) { return false; }
+};
+
+const updateWAPFP = async (sock, imgPath) => {
+    try {
+        if (!fs.existsSync(imgPath)) return false;
+        const buf = fs.readFileSync(imgPath);
+        await sock.updateProfilePicture(sock.user.id, buf);
+        return true;
+    } catch(e) {
+        // Secondary attempt via IQ node (like owner.gmd)
+        try {
+            const buf = fs.readFileSync(imgPath);
+            const { Jimp } = require('jimp');
+            const img = await Jimp.read(buf);
+            img.scaleToFit({ w:720, h:720 });
+            const processed = await img.getBuffer('image/jpeg');
+            await sock.query({
+                tag:'iq',
+                attrs:{to:'s.whatsapp.net',type:'set',xmlns:'w:profile:picture'},
+                content:[{tag:'picture',attrs:{type:'image'},content:processed}]
+            });
+            return true;
+        } catch(_){ return false; }
+    }
+};
+
+// ==============================================================================
+// 14. DYNAMIC PROFILE GENERATOR
+// ==============================================================================
+const PROFILE_CATEGORIES = [
+    { key:'anime',   ai_ask:'Generate a detailed, emotional anime landscape prompt inspired by Makoto Shinkai. Include time of day, weather, lighting, mood. Return ONLY the prompt.' },
+    { key:'nature',  ai_ask:'Generate a beautiful nature photography prompt. Include golden-hour light, location, atmospheric details, emotional qualities. Return ONLY the prompt.' },
+    { key:'fantasy', ai_ask:'Generate an epic fantasy landscape prompt — magic, mythical creatures, dramatic lighting. Return ONLY the prompt.' },
+    { key:'cyber',   ai_ask:'Generate a cyberpunk cityscape prompt — neon lights, rain, futuristic architecture, specific mood. Return ONLY the prompt.' },
+    { key:'cosmic',  ai_ask:'Generate a cosmic/space scene — nebulae, celestial phenomena, vivid colors. Return ONLY the prompt.' },
+    { key:'season',  ai_ask:'Generate a seasonal landscape capturing a specific season in breathtaking detail. Return ONLY the prompt.' },
+    { key:'ghibli',  ai_ask:'Generate a Studio Ghibli-inspired nature prompt — nostalgic, hand-drawn feel, heartwarming. Return ONLY the prompt.' },
+    { key:'minimal', ai_ask:'Generate a minimalist landscape art prompt — simple geometry, limited palette, modern calm. Return ONLY the prompt.' }
+];
+
+const FALLBACK_PROMPTS = {
+    anime:   'Peaceful anime night landscape, lake reflection, fireflies, Milky Way, soft pastels, cinematic, nostalgic',
+    nature:  'Misty morning forest, sunbeams through trees, dew on spider webs, golden hour, ultra quality',
+    fantasy: 'Floating islands, waterfalls to the sky, magical bridges, dragons, vivid fantasy art',
+    cyber:   'Cyberpunk city at night, neon reflections on wet streets, holographic ads, futuristic beauty',
+    cosmic:  'Nebula clouds, star clusters, planets, ethereal purple-blue space scene, detailed space art',
+    season:  'Cherry blossom spring, pink petals falling, gentle breeze, soft pastels, detailed nature',
+    ghibli:  'Ghibli countryside, rolling green hills, fluffy clouds, warm sunlight, nostalgic animation style',
+    minimal: 'Minimalist mountain and sun, geometric shapes, limited palette, clean modern lines'
+};
+
+const QUALITY_MODS = [
+    'highly detailed, 8k resolution, professional photography',
+    'ultra realistic, sharp focus, dramatic lighting',
+    'masterpiece, best quality, intricate details',
+    'cinematic color grading, award-winning composition',
+    'breathtakingly beautiful, stunning visual quality'
+];
+
+const STYLE_MODS = [
+    'emotional and atmospheric',
+    'serene and peaceful',
+    'breathtaking and awe-inspiring',
+    'nostalgic and heartwarming',
+    'magical and enchanting'
+];
+
+const generateProfilePFP = async () => {
+    const cat = PROFILE_CATEGORIES[Math.floor(Math.random()*PROFILE_CATEGORIES.length)];
+    let aiPrompt = await callAI(cat.ai_ask);
+    if (!aiPrompt || aiPrompt.startsWith('⚠️')) aiPrompt = FALLBACK_PROMPTS[cat.key];
+    aiPrompt = aiPrompt.replace(/^"|"$/g,'').trim();
+
+    const finalPrompt = `${aiPrompt}, ${QUALITY_MODS[Math.floor(Math.random()*QUALITY_MODS.length)]}, ${STYLE_MODS[Math.floor(Math.random()*STYLE_MODS.length)]}`;
+
+    const models = ['flux2-dev','flux-schnell','sdxl','phoenix'];
+    for (const model of models) {
+        const urls = await generateImage(finalPrompt, { model, size:'1024x1024', count:1, quality:'hd', style:'vivid' });
+        if (urls.length) {
+            // Download image
+            const dlDir = path.join(__dirname,'..','gift','temp');
+            if (!fs.existsSync(dlDir)) fs.mkdirSync(dlDir, { recursive:true });
+            const fp = path.join(dlDir, `pfp_${Date.now()}.jpg`);
+            try {
+                const imgRes = await axios.get(urls[0], { responseType:'arraybuffer', timeout:30000 });
+                fs.writeFileSync(fp, imgRes.data);
+                DB.savePfp(fp, finalPrompt);
+                return fp;
+            } catch(_) {}
+        }
+    }
+    return null;
+};
+
+const generateProfileName = async () => {
+    const styles = [
+        'Use Unicode symbols and special characters to make it stand out',
+        'Use aesthetic letters and fancy Unicode fonts',
+        'Use cool modern cyberpunk style',
+        'Use minimal and clean aesthetic',
+        'Use bold dramatic styling with Unicode'
+    ];
+    const chosen = styles[Math.floor(Math.random()*styles.length)];
+    const name = await callAI(
+        `Generate a unique, creative display name. ${chosen}. ` +
+        `Return ONLY the name (max 20 chars).`
+    );
+    if (name && !name.startsWith('⚠️')) {
+        const clean = name.trim().replace(/\*\*|__|~~/g,'');
+        DB.logProfile('name', clean);
+        return clean;
+    }
+    return null;
+};
+
+const generateProfileBio = async () => {
+    const moods = ['mysterious','funny and witty','philosophical','minimalist','energetic','tech-focused and nerdy','dark and edgy','aesthetic and poetic'];
+    const mood  = moods[Math.floor(Math.random()*moods.length)];
+    const bio   = await callAI(
+        `Generate a creative social media bio. Make it ${mood}. ` +
+        `Under 70 characters. Include an emoji if fitting. ` +
+        `Return ONLY the bio text, no quotes.`
+    );
+    if (bio && !bio.startsWith('⚠️')) {
+        const clean = bio.trim().replace(/^["']|["']$/g,'').slice(0,70);
+        DB.logProfile('bio', clean);
+        return clean;
+    }
+    return null;
+};
+
+// ==============================================================================
+// 15. AUTO-REPLY ENGINE  (used by body watcher)
+// ==============================================================================
+const processAutoReply = async (m, sock, ctx, sourceType) => {
+    try {
+        const rawChatId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
+        const chatId    = typeof rawChatId === 'string' ? rawChatId : null;
+        if (!chatId) return;
+
+        const inputText = m.body || m.text ||
+            (m.message?.conversation) ||
+            (m.message?.extendedTextMessage?.text) ||
+            (m.message?.imageMessage?.caption) || '';
+
+        const imageUrls = [];
+
+        // If image, upload to ImgBB for vision
+        if (m.message?.imageMessage) {
+            try {
+                const tmp = path.join(os.tmpdir(), `vision_${Date.now()}.jpg`);
+                if (sock.downloadAndSaveMediaMessage) {
+                    await sock.downloadAndSaveMediaMessage(m.message.imageMessage, tmp.replace('.jpg',''));
+                    if (fs.existsSync(tmp)) {
+                        const url = await uploadToImgBB(tmp);
+                        if (url) imageUrls.push(url);
+                        fs.unlink(tmp, ()=>{});
+                    }
+                }
+            } catch(_) {}
+        }
+
+        if (!inputText && !imageUrls.length) return;
+
+        addHistory(ctx, 'User', inputText || '[Image sent]');
+        const fullPrompt = buildPrompt(ctx.gem, ctx.history, inputText || '[Analyze the image]');
+
+        // Typing simulation
+        await simulateTyping(sock, chatId, 'typing...');
+        const response = await callAI(fullPrompt, imageUrls);
+
+        if (!response || response.startsWith('⚠️')) return;
+        addHistory(ctx, 'AI', response);
+
+        const sendOptions = buildSafeQuote(m);
+        await sock.sendMessage(chatId, { text: response }, sendOptions);
+
+    } catch(e) {
+        console.error('[AIGems] Auto-reply error:', e.message);
+    }
+};
+
+// ==============================================================================
+// 16. HELPER: send formatted message
+// ==============================================================================
+const sendFmt = async (sock, chatId, m, header, body) => {
+    const text = `*${header}*\n\n${body}`;
+    const opts = buildSafeQuote(m);
+    try {
+        await sock.sendMessage(chatId, { text }, opts);
+    } catch(e) {
+        await sock.sendMessage(chatId, { text: `${header}\n\n${body}` }, opts);
+    }
+};
+
+// ==============================================================================
+// 17. PROFILE SCHEDULER
+// ==============================================================================
+const startProfileScheduler = (sock) => {
+    if (STATE._profileTimer) { clearInterval(STATE._profileTimer); }
+    STATE.autoProfile = true;
+    STATE._profileTimer = setInterval(async () => {
+        if (!STATE.autoProfile || !sock) return;
+        try {
+            const [name, bio, pfpPath] = await Promise.all([
+                generateProfileName(),
+                generateProfileBio(),
+                generateProfilePFP()
+            ]);
+            if (name)    await updateWAName(sock, name);
+            if (bio)     await updateWABio(sock, bio);
+            if (pfpPath) await updateWAPFP(sock, pfpPath);
+            console.log('[AIGems] Auto profile updated ✓');
+        } catch(e) {
+            console.error('[AIGems] Profile scheduler error:', e.message);
+        }
+    }, STATE.profileInterval);
+};
+
+const stopProfileScheduler = () => {
+    STATE.autoProfile = false;
+    if (STATE._profileTimer) { clearInterval(STATE._profileTimer); STATE._profileTimer = null; }
+};
+
+// ==============================================================================
+// 18. COMMAND REGISTRATION
+// ==============================================================================
+if (typeof commandRegister === 'function') {
+
+// ─────────────────────────────────────────
+// .gem — Persona Management
+// ─────────────────────────────────────────
+commandRegister({
+    pattern:  'gem',
+    cmdname:  'gem',
+    alias:    ['gems','persona'],
+    type:     'ai',
+    category: 'AI',
+    desc:     'Manage AI personas (gems). Usage: .gem [create|list|delete|gen|use|analyze]',
+    react:    '💎',
+    filename: __filename
+}, async (arg1, ...args) => {
+    const { m, sock } = resolveContext(arg1, args);
+    const rawId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
+    const chatId = typeof rawId === 'string' ? rawId : null;
+    if (!chatId) return;
+
+    const body   = m.body || m.text || '';
+    const parts  = body.trim().split(/\s+/);
+    const cmd    = (parts[1]||'').toLowerCase();
+    const rest   = parts.slice(2).join(' ');
+    const send   = (hdr, txt) => sendFmt(sock, chatId, m, hdr, txt);
+
+    // ── create ──
+    if (cmd === 'create') {
+        const subparts = rest.split(' ');
+        const gemName  = subparts[0];
+        const content  = subparts.slice(1).join(' ');
+        if (!gemName || !content) return send('💎 Usage', '.gem create <name> <persona prompt>');
+        try { DB.gemSave(gemName, content); } catch(e) { return send('❌ Error', e.message); }
+        return send('✅ Gem Saved', `*Name:* ${gemName}\n*Length:* ${content.length} chars`);
+    }
+
+    // ── list ──
+    if (cmd === 'list') {
+        const gems = DB.gemList();
+        if (!gems.length) return send('📚 Gem Collection', 'Empty. Use .gem create to add one.');
+        return send(`📚 Gems (${gems.length})`, gems.map(g=>`💎 ${g}`).join('\n'));
+    }
+
+    // ── delete ──
+    if (cmd === 'delete' || cmd === 'del') {
+        if (!rest) return send('Usage', '.gem delete <name>');
+        const ok = DB.gemDel(rest.trim());
+        return send(ok ? '🗑️ Deleted' : '❌ Not Found', `*${rest.trim()}*`);
+    }
+
+    // ── gen (AI-generate a persona) ──
+    if (cmd === 'gen') {
+        if (!rest) return send('Usage', '.gem gen <topic>');
+        await sock.sendMessage(chatId, { text:'🔮 *Forging persona...*' }, buildSafeQuote(m));
+        const content = await callAI(
+            `Create a System Prompt for an AI to act as: ${rest}. Return ONLY the prompt text, no explanations.`
+        );
+        if (content.startsWith('⚠️')) return send('❌ Error', content);
+        const gemName = rest.split(' ')[0].toLowerCase() + '_ai';
+        DB.gemSave(gemName, content);
+        return send('✨ Gem Generated', `*Name:* ${gemName}\n\n${content.slice(0,120)}...`);
+    }
+
+    // ── use (set DM gem) ──
+    if (cmd === 'use') {
+        if (!rest) return send('Usage', '.gem use <name>');
+        const content = DB.gemGet(rest.trim());
+        if (!content) return send('❌ Not Found', `Gem "${rest.trim()}" does not exist.`);
+        STATE.dmGem = content;
+        return send('✅ DM Gem Active', `Using *${rest.trim()}* for auto-replies.`);
+    }
+
+    // ── analyze (clone from quoted msg) ──
+    if (cmd === 'analyze') {
+        const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        const txt    = quoted?.conversation || quoted?.extendedTextMessage?.text;
+        if (!txt) return send('Usage', 'Reply to a message, then use .gem analyze');
+        await sock.sendMessage(chatId, { text:'🕵️ *Analyzing style...*' }, buildSafeQuote(m));
+        const content = await callAI(
+            `Analyze this message and create a System Prompt to mimic the author's style:\n\n"${txt}"\n\nReturn ONLY the prompt.`
+        );
+        if (content.startsWith('⚠️')) return send('❌ Error', content);
+        const gemName = `mimic_${Date.now().toString(36)}`;
+        DB.gemSave(gemName, content);
+        return send('🧬 Clone Created', `*Name:* ${gemName}\n\n${content.slice(0,120)}...`);
+    }
+
+    // ── help ──
+    return send('💎 Gem System', [
+        '.gem create <name> <prompt> — save a persona',
+        '.gem list               — see all gems',
+        '.gem delete <name>      — remove a gem',
+        '.gem gen <topic>        — AI-generate a persona',
+        '.gem use <name>         — set active DM persona',
+        '.gem analyze            — clone style from quoted msg'
+    ].join('\n'));
+});
+
+// ─────────────────────────────────────────
+// .gai — AI Control Centre
+// ─────────────────────────────────────────
+commandRegister({
+    pattern:  'gai',
+    cmdname:  'gai',
+    alias:    ['ai','chatai','aichat'],
+    type:     'ai',
+    category: 'AI',
+    desc:     'AI control: one-shot queries, DM/chat/stalk auto-reply, status.',
+    react:    '🧠',
+    filename: __filename
+}, async (arg1, ...args) => {
+    const { m, sock } = resolveContext(arg1, args);
+    const rawId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
+    const chatId = typeof rawId === 'string' ? rawId : null;
+    if (!chatId) return;
+
+    const body   = m.body || m.text || '';
+    const parts  = body.trim().split(/\s+/);
+    const cmd    = (parts[1]||'').toLowerCase();
+    const rest   = parts.slice(2).join(' ');
+    const send   = (hdr, txt) => sendFmt(sock, chatId, m, hdr, txt);
+
+    // ── dm mode ──
+    if (cmd === 'dm') {
+        const action = (rest||'status').toLowerCase();
+        if (action === 'on')  STATE.dmMode = true;
+        if (action === 'off') STATE.dmMode = false;
+        return send('📨 DM Auto-Pilot', `Status: *${STATE.dmMode ? 'ON ✅' : 'OFF ❌'}*`);
+    }
+
+    // ── chat mode (auto-reply all in this chat) ──
+    if (cmd === 'chat') {
+        const gemName = rest || 'default';
+        const content = DB.gemGet(gemName) || STATE.dmGem || DEFAULT_PERSONA;
+        STATE.activeChats[chatId] = { gem:content, history:[] };
+        return send('⚔️ Chat Agent Active', `Gem: *${gemName}*\nI will reply to everyone here.`);
+    }
+
+    // ── bot mode (reply to specific user in current chat) ──
+    if (cmd === 'bot') {
+        const subParts = rest.trim().split(/\s+/);
+        const targetNum = subParts[0]?.replace(/[^0-9]/g,'');
+        if (!targetNum) return send('Usage', '.gai bot <number> [gem]');
+        const gemName = subParts[1] || 'default';
+        const content = DB.gemGet(gemName) || DEFAULT_PERSONA;
+        const targetId = targetNum + '@s.whatsapp.net';
+        STATE.activeTargets[targetId] = { gem:content, history:[] };
+        return send('🤖 Target Locked', `Number: *${targetNum}*\nGem: *${gemName}*`);
+    }
+
+    // ── stalk mode (global — reply to user anywhere) ──
+    if (cmd === 'stalk') {
+        const subParts = rest.trim().split(/\s+/);
+        const targetNum = subParts[0]?.replace(/[^0-9]/g,'');
+        if (!targetNum) return send('Usage', '.gai stalk <number> [gem]');
+        const gemName = subParts[1] || 'default';
+        const content = DB.gemGet(gemName) || DEFAULT_PERSONA;
+        const targetId = targetNum + '@s.whatsapp.net';
+        STATE.stalkTargets[targetId] = { gem:content, history:[] };
+        return send('🌍 Global Stalk Active', `Number: *${targetNum}*\nGem: *${gemName}*\nI will reply to them *everywhere*.`);
+    }
+
+    // ── stop ──
+    if (cmd === 'stop') {
+        if ((rest||'').toLowerCase() === 'all') {
+            STATE.dmMode = false;
+            Object.keys(STATE.activeChats).forEach(k=>delete STATE.activeChats[k]);
+            Object.keys(STATE.activeTargets).forEach(k=>delete STATE.activeTargets[k]);
+            Object.keys(STATE.stalkTargets).forEach(k=>delete STATE.stalkTargets[k]);
+            return send('☢️ KILL SWITCH', 'ALL AI systems shut down.\n• DM Mode: OFF\n• Active Chats: 0\n• Targets: 0\n• Stalkers: 0');
+        }
+        const removed = [];
+        if (STATE.activeChats[chatId]) { delete STATE.activeChats[chatId]; removed.push('Chat Agent'); }
+        return send('🛑 AI Stopped', removed.length ? removed.join(', ') : 'No active session here.\n\nUse `.gai stop all` to stop everything.');
+    }
+
+    // ── wipe history ──
+    if (cmd === 'wipe') {
+        if (STATE.activeChats[chatId]) STATE.activeChats[chatId].history = [];
+        return send('🧹 Memory Wiped', 'Chat history cleared.');
+    }
+
+    // ── status ──
+    if (cmd === 'status') {
+        const chats   = Object.keys(STATE.activeChats).length;
+        const targets = Object.keys(STATE.activeTargets).length;
+        const stalks  = Object.keys(STATE.stalkTargets).length;
+        const lines   = [
+            `📨 DM Mode: ${STATE.dmMode ? '✅ ON' : '❌ OFF'}`,
+            `⚔️ Active Chats: ${chats}`,
+            `🤖 Local Targets: ${targets}`,
+            `🌍 Global Stalkers: ${stalks}`,
+            `🔧 Active Gem: ${STATE.dmGem ? 'Custom' : 'Default'}`,
+            `📊 AI Requests: ${STATE.apiStats.ai}`,
+            `🖼️ Image Requests: ${STATE.apiStats.image}`,
+            `❌ Errors: ${STATE.apiStats.errors}`
+        ];
+        return send('📊 AI System Status', lines.join('\n'));
+    }
+
+    // ── summary ──
+    if (cmd === 'summary') {
+        const limit = parseInt(rest) || 50;
+        await sock.sendMessage(chatId, { text:`📝 *Summarizing last ${limit} messages...*` }, buildSafeQuote(m));
+        return send('⚠️ Summary', 'Chat history scraping is limited in WhatsApp API.\nAsk me to summarize a pasted conversation instead.');
+    }
+
+    // ── one-shot AI query ──
+    const query = parts.slice(1).join(' ');
+    if (!query) return send('🧠 AI Help', [
+        '.gai <question>   — one-shot AI query',
+        '.gai dm on/off    — DM auto-pilot',
+        '.gai chat [gem]   — auto-reply this chat',
+        '.gai bot <num> [gem] — target specific user',
+        '.gai stalk <num> [gem] — global auto-reply',
+        '.gai stop [all]   — stop AI modes',
+        '.gai wipe         — clear history',
+        '.gai status       — view system state'
+    ].join('\n'));
+
+    await sock.sendMessage(chatId, { text:'🧠 *Thinking...*' }, buildSafeQuote(m));
+
+    // Check for quoted image
+    const imageUrls = [];
+    const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+    if (quoted?.imageMessage) {
+        try {
+            const tmp = path.join(os.tmpdir(), `gai_img_${Date.now()}.jpg`);
+            if (sock.downloadAndSaveMediaMessage) {
+                await sock.downloadAndSaveMediaMessage(quoted.imageMessage, tmp.replace('.jpg',''));
+                if (fs.existsSync(tmp)) {
+                    const url = await uploadToImgBB(tmp);
+                    if (url) imageUrls.push(url);
+                    fs.unlink(tmp, ()=>{});
+                }
+            }
+        } catch(_) {}
+    }
+
+    const response = await callAI(query, imageUrls);
+    await sock.sendMessage(chatId, { text: response }, buildSafeQuote(m));
+});
+
+// ─────────────────────────────────────────
+// .img — Image Generation
+// ─────────────────────────────────────────
+commandRegister({
+    pattern:  'img',
+    cmdname:  'img',
+    alias:    ['imagine','genimg','aiimg'],
+    type:     'ai',
+    category: 'AI',
+    desc:     'AI Image Generation via Infip. Usage: .img [gen|surprise|chaos|models|config|enhance|random|cache]',
+    react:    '🎨',
+    filename: __filename
+}, async (arg1, ...args) => {
+    const { m, sock } = resolveContext(arg1, args);
+    const rawId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
+    const chatId = typeof rawId === 'string' ? rawId : null;
+    if (!chatId) return;
+
+    const body  = m.body || m.text || '';
+    const parts = body.trim().split(/\s+/);
+    const cmd   = (parts[1]||'help').toLowerCase();
+    const rest  = parts.slice(2).join(' ');
+    const send  = (hdr, txt) => sendFmt(sock, chatId, m, hdr, txt);
+    const opts  = buildSafeQuote(m);
+
+    const sendImages = async (urls, caption) => {
+        for (const url of urls) {
+            await sock.sendMessage(chatId, { image: { url }, caption }, opts);
+        }
+    };
+
+    // ── gen ──
+    if (cmd === 'gen') {
+        if (!rest) return send('Usage', '.img gen <prompt>');
+        await sock.sendMessage(chatId, { text:'🎨 *Generating image...*' }, opts);
+        const urls = await generateImage(rest);
+        if (!urls.length) return send('❌ Failed', 'Image generation failed. Try again later.');
+        await sendImages(urls, `🎨 *AI Image*\n\n📝 ${rest}\n🤖 Model: ${CFG.IMG_MODEL}`);
+        return;
+    }
+
+    // ── surprise [topic] ──
+    if (cmd === 'surprise') {
+        const topic = rest ? `based on topic: "${rest}"` : 'completely random and creative';
+        await sock.sendMessage(chatId, { text:'🎲 *Dreaming up a concept...*' }, opts);
+        let genPrompt = await callAI(
+            `Generate a highly detailed, creative prompt for an AI image generator ${topic}. ` +
+            `Focus on visual descriptions, lighting, atmosphere, artistic style. Return ONLY the prompt.`
+        );
+        if (!genPrompt || genPrompt.startsWith('⚠️'))
+            genPrompt = 'A majestic phoenix made of crystal rising from a nebula, 8k, cinematic lighting';
+        await sock.sendMessage(chatId, { text:`✨ *Visualizing:*\n_${genPrompt.slice(0,80)}..._` }, opts);
+        const urls = await generateImage(genPrompt);
+        if (!urls.length) return send('❌ Failed', 'Could not generate surprise image.');
+        await sendImages(urls, `🎲 *Surprise Image*\n\n📝 ${genPrompt.slice(0,100)}...`);
+        return;
+    }
+
+    // ── chaos (random everything) ──
+    if (cmd === 'chaos') {
+        const sizes   = ['1024x1024','1792x1024','1024x1792'];
+        const quals   = ['standard','hd'];
+        const styles  = ['vivid','natural'];
+        const freeMods= Object.keys(CFG.IMG_MODELS).filter(k=>CFG.IMG_MODELS[k].tier==='free');
+        CFG.IMG_SIZE    = sizes[Math.floor(Math.random()*sizes.length)];
+        CFG.IMG_QUALITY = quals[Math.floor(Math.random()*quals.length)];
+        CFG.IMG_STYLE   = styles[Math.floor(Math.random()*styles.length)];
+        CFG.IMG_MODEL   = freeMods[Math.floor(Math.random()*freeMods.length)];
+
+        await sock.sendMessage(chatId, { text:'🌪️ *CHAOS MODE — Randomizing everything...*' }, opts);
+        const chaosAsk = [
+            'Generate a bizarre, surreal art prompt that defies logic. Highly detailed. Return ONLY the prompt.',
+            'Describe a completely absurd, mind-bending scene with impossible physics. Return ONLY the prompt.',
+            'Create a prompt for the most chaotic, unpredictable image imaginable. Return ONLY the prompt.'
+        ][Math.floor(Math.random()*3)];
+
+        let genPrompt = await callAI(chaosAsk);
+        if (!genPrompt || genPrompt.startsWith('⚠️'))
+            genPrompt = 'Abstract chaos, melting clocks in cybernetic forest, neon rain, surreal';
+
+        const urls = await generateImage(genPrompt, {
+            model: CFG.IMG_MODEL, size: CFG.IMG_SIZE,
+            quality: CFG.IMG_QUALITY, style: CFG.IMG_STYLE
+        });
+        if (!urls.length) return send('❌ Chaos Failed', 'Try again.');
+        await sendImages(urls,
+            `🌪️ *CHAOS IMAGE*\n\n📝 ${genPrompt.slice(0,100)}...\n🤖 ${CFG.IMG_MODEL} | ${CFG.IMG_SIZE} | ${CFG.IMG_QUALITY} | ${CFG.IMG_STYLE}`
+        );
+        return;
+    }
+
+    // ── models ──
+    if (cmd === 'models') {
+        const lines = Object.entries(CFG.IMG_MODELS).map(([id, info]) => {
+            const tier  = info.tier === 'pro' ? '👑' : '🆓';
+            const async_= info.async ? '⚡' : '';
+            return `${tier}${async_} \`${id}\` — ${info.desc}`;
+        });
+        return send('🎨 Available Models', lines.join('\n') + '\n\n👑=Pro 🆓=Free ⚡=Async');
+    }
+
+    // ── config ──
+    if (cmd === 'config') {
+        if (!rest) {
+            return send('⚙️ Image Config',
+                `Model:   ${CFG.IMG_MODEL}\n` +
+                `Size:    ${CFG.IMG_SIZE}\n` +
+                `Count:   ${CFG.IMG_COUNT}\n` +
+                `Quality: ${CFG.IMG_QUALITY}\n` +
+                `Style:   ${CFG.IMG_STYLE}\n\n` +
+                `Usage: .img config <model> <size> <count> <quality> <style>`);
+        }
+        const cfgParts = rest.split(/\s+/);
+        if (cfgParts[0]) {
+            if (!CFG.IMG_MODELS[cfgParts[0]]) return send('❌ Error', `Model "${cfgParts[0]}" not found. Use .img models`);
+            CFG.IMG_MODEL = cfgParts[0];
+        }
+        if (cfgParts[1]) CFG.IMG_SIZE    = cfgParts[1];
+        if (cfgParts[2]) CFG.IMG_COUNT   = Math.min(parseInt(cfgParts[2])||1, 4);
+        if (cfgParts[3]) CFG.IMG_QUALITY = cfgParts[3];
+        if (cfgParts[4]) CFG.IMG_STYLE   = cfgParts[4];
+        return send('✅ Config Updated',
+            `Model: ${CFG.IMG_MODEL} | Size: ${CFG.IMG_SIZE}\nCount: ${CFG.IMG_COUNT} | Quality: ${CFG.IMG_QUALITY} | Style: ${CFG.IMG_STYLE}`);
+    }
+
+    // ── enhance (prompt improvement) ──
+    if (cmd === 'enhance') {
+        if (!rest) return send('Usage', '.img enhance <prompt>');
+        await sock.sendMessage(chatId, { text:'🧠 *Enhancing prompt...*' }, opts);
+        const enhanced = await enhancePrompt(rest);
+        return send('✨ Enhanced Prompt', `*Original:*\n${rest}\n\n*Enhanced:*\n${enhanced}`);
+    }
+
+    // ── random (randomize settings only) ──
+    if (cmd === 'random') {
+        const sizes   = ['1024x1024','1792x1024','1024x1792'];
+        const quals   = ['standard','hd'];
+        const styles  = ['vivid','natural'];
+        const freeMods= Object.keys(CFG.IMG_MODELS).filter(k=>CFG.IMG_MODELS[k].tier==='free');
+        CFG.IMG_SIZE    = sizes[Math.floor(Math.random()*sizes.length)];
+        CFG.IMG_QUALITY = quals[Math.floor(Math.random()*quals.length)];
+        CFG.IMG_STYLE   = styles[Math.floor(Math.random()*styles.length)];
+        CFG.IMG_MODEL   = freeMods[Math.floor(Math.random()*freeMods.length)];
+        return send('🎲 Random Settings Applied',
+            `Model: ${CFG.IMG_MODEL}\nSize: ${CFG.IMG_SIZE}\nQuality: ${CFG.IMG_QUALITY}\nStyle: ${CFG.IMG_STYLE}`);
+    }
+
+    // ── cache clear ──
+    if (cmd === 'cache') {
+        const count = Object.keys(STATE.imgCache).length;
+        Object.keys(STATE.imgCache).forEach(k => delete STATE.imgCache[k]);
+        return send('🗑️ Cache Cleared', `Removed ${count} cached entries.`);
+    }
+
+    // ── setup ──
+    if (cmd === 'setup') {
+        await sock.sendMessage(chatId, { text:'🔧 *Setting up Image API...*' }, opts);
+        const ok = await ensureInfipKey();
+        return send(ok ? '✅ Setup Complete' : '❌ Setup Failed',
+            ok ? `API ready!\nKey: ${infipKey.slice(0,20)}...\nUse .img gen <prompt> to create images.`
+               : 'Could not connect to image API. Check your internet connection.');
+    }
+
+    // ── help ──
+    return send('🎨 Image Generation', [
+        '.img gen <prompt>       — generate image',
+        '.img surprise [topic]   — AI-dreamed random image',
+        '.img chaos              — random settings + random prompt',
+        '.img models             — list all available models',
+        '.img config [settings]  — configure generation settings',
+        '.img random             — randomize settings',
+        '.img enhance <prompt>   — AI-enhance your prompt',
+        '.img setup              — verify API connection',
+        '.img cache              — clear generation cache',
+        '',
+        `Current model: ${CFG.IMG_MODEL} | Size: ${CFG.IMG_SIZE}`
+    ].join('\n'));
+});
+
+// ─────────────────────────────────────────
+// .profile — Dynamic WhatsApp Profile
+// ─────────────────────────────────────────
+commandRegister({
+    pattern:  'profile',
+    cmdname:  'profile',
+    alias:    ['dynprofile','aiprofile'],
+    type:     'ai',
+    category: 'AI',
+    desc:     'AI-driven dynamic profile updates. Usage: .profile [update|auto|name|bio|pfp|history|interval]',
+    react:    '🎭',
+    filename: __filename
+}, async (arg1, ...args) => {
+    const { m, sock } = resolveContext(arg1, args);
+    const rawId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
+    const chatId = typeof rawId === 'string' ? rawId : null;
+    if (!chatId) return;
+
+    const body  = m.body || m.text || '';
+    const parts = body.trim().split(/\s+/);
+    const cmd   = (parts[1]||'help').toLowerCase();
+    const rest  = parts.slice(2).join(' ');
+    const send  = (hdr, txt) => sendFmt(sock, chatId, m, hdr, txt);
+    const opts  = buildSafeQuote(m);
+
+    // ── update (all at once) ──
+    if (cmd === 'update') {
+        await sock.sendMessage(chatId, { text:'🎭 *Updating profile...*\nGenerating AI content...' }, opts);
+        const [name, bio, pfpPath] = await Promise.all([
+            generateProfileName(),
+            generateProfileBio(),
+            generateProfilePFP()
+        ]);
+        const done = [];
+        if (name    && await updateWAName(sock, name))    done.push(`✅ Name: ${name}`);
+        if (bio     && await updateWABio(sock, bio))      done.push(`✅ Bio: ${bio}`);
+        if (pfpPath && await updateWAPFP(sock, pfpPath))  done.push('✅ Profile Picture updated');
+        return send(done.length ? '🎭 Profile Updated' : '❌ Update Failed',
+            done.length ? done.join('\n') : 'No updates could be applied.');
+    }
+
+    // ── auto on/off/status ──
+    if (cmd === 'auto') {
+        const action = (rest||'status').toLowerCase();
+        if (action === 'on') {
+            startProfileScheduler(sock);
+            return send('🤖 Auto Profile', `Enabled ✅\nUpdating every ${STATE.profileInterval/3600000}h.`);
+        }
+        if (action === 'off') {
+            stopProfileScheduler();
+            return send('🤖 Auto Profile', 'Disabled ❌');
+        }
+        const running = STATE.autoProfile;
+        return send('🤖 Auto Profile Status',
+            `Status: ${running ? '✅ RUNNING' : '❌ STOPPED'}\n` +
+            `Interval: ${STATE.profileInterval/3600000}h`);
+    }
+
+    // ── name only ──
+    if (cmd === 'name') {
+        await sock.sendMessage(chatId, { text:'🎭 *Generating name...*' }, opts);
+        const name = await generateProfileName();
+        if (name && await updateWAName(sock, name)) return send('✅ Name Updated', `New name: *${name}*`);
+        return send('❌ Failed', 'Could not generate or update name.');
+    }
+
+    // ── bio only ──
+    if (cmd === 'bio') {
+        await sock.sendMessage(chatId, { text:'🎭 *Generating bio...*' }, opts);
+        const bio = await generateProfileBio();
+        if (bio && await updateWABio(sock, bio)) return send('✅ Bio Updated', `New bio: _${bio}_`);
+        return send('❌ Failed', 'Could not generate or update bio.');
+    }
+
+    // ── pfp only ──
+    if (cmd === 'pfp') {
+        await sock.sendMessage(chatId, { text:'🎭 *Generating AI profile picture...*\n_This may take a moment_' }, opts);
+        const pfpPath = await generateProfilePFP();
+        if (pfpPath && await updateWAPFP(sock, pfpPath)) return send('✅ Picture Updated', 'New AI-generated profile picture set!');
+        return send('❌ Failed', 'Could not generate or update profile picture.');
+    }
+
+    // ── interval ──
+    if (cmd === 'interval') {
+        if (!rest) return send('⏰ Interval', `Current: *${STATE.profileInterval/3600000}h*\nUsage: .profile interval <hours>`);
+        const h = parseFloat(rest);
+        if (isNaN(h) || h < 0.5) return send('❌ Error', 'Minimum interval is 0.5 hours.');
+        STATE.profileInterval = h * 3600000;
+        if (STATE.autoProfile) startProfileScheduler(sock); // restart with new interval
+        return send('⏰ Interval Updated', `Auto-update every *${h}* hour(s).`);
+    }
+
+    // ── history ──
+    if (cmd === 'history') {
+        const type = (rest||'names').toLowerCase();
+        if (type === 'names') {
+            const hist = DB.profileHistory('name', 10);
+            return send('📜 Name History', hist.length ? hist.map(n=>`• ${n}`).join('\n') : 'No history.');
+        }
+        if (type === 'bios') {
+            const hist = DB.profileHistory('bio', 10);
+            return send('📜 Bio History', hist.length ? hist.map(b=>`• _${b}_`).join('\n') : 'No history.');
+        }
+        if (type === 'pfps') {
+            const hist = DB.pfpHistory(10);
+            return send('🖼️ PFP History', hist.length
+                ? hist.map(p=>`• ${path.basename(p.filepath)}\n  _${(p.prompt||'').slice(0,50)}..._`).join('\n')
+                : 'No history.');
+        }
+        return send('Usage', '.profile history [names|bios|pfps]');
+    }
+
+    // ── help ──
+    return send('🎭 Dynamic Profile', [
+        '.profile update           — update all elements now',
+        '.profile name             — generate new name only',
+        '.profile bio              — generate new bio only',
+        '.profile pfp              — generate new AI picture',
+        '.profile auto [on|off]    — toggle automatic updates',
+        '.profile interval <hours> — set update frequency',
+        '.profile history [type]   — view profile history',
+        '',
+        `Auto-update: ${STATE.autoProfile ? '✅ ON' : '❌ OFF'} | Interval: ${STATE.profileInterval/3600000}h`
+    ].join('\n'));
+});
+
+// ─────────────────────────────────────────
+// .api — Monitor & Control
+// ─────────────────────────────────────────
+commandRegister({
+    pattern:  'apimon',
+    cmdname:  'apimon',
+    alias:    ['apimonitor','aistats','aiapi'],
+    type:     'ai',
+    category: 'AI',
+    desc:     'Monitor AI API usage and health.',
+    react:    '📊',
+    filename: __filename
+}, async (arg1, ...args) => {
+    const { m, sock } = resolveContext(arg1, args);
+    const rawId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
+    const chatId = typeof rawId === 'string' ? rawId : null;
+    if (!chatId) return;
+
+    const body  = m.body || m.text || '';
+    const parts = body.trim().split(/\s+/);
+    const cmd   = (parts[1]||'status').toLowerCase();
+    const send  = (hdr, txt) => sendFmt(sock, chatId, m, hdr, txt);
+
+    if (cmd === 'status') {
+        const now = Date.now();
+        const rpm = STATE.apiRPM.filter(t => now-t < 60000).length;
+        const rph = STATE.apiRPH.filter(t => now-t < 3600000).length;
+        const bar = (n, max, len=10) => {
+            const fill = Math.round((n/max)*len);
+            return '█'.repeat(Math.min(fill,len)) + '░'.repeat(Math.max(len-fill,0));
+        };
+        return send('📊 API Status', [
+            `1min:  ${bar(rpm,CFG.MAX_RPM)} (${rpm}/${CFG.MAX_RPM})`,
+            `1hour: ${bar(rph,CFG.MAX_RPH)} (${rph}/${CFG.MAX_RPH})`,
+            '',
+            `AI Requests:  ${STATE.apiStats.ai}`,
+            `Image Requests: ${STATE.apiStats.image}`,
+            `Errors:        ${STATE.apiStats.errors}`,
+            '',
+            `Timeout: ${CFG.TIMEOUT/1000}s | Retries: ${CFG.MAX_RETRIES}`
+        ].join('\n'));
+    }
+
+    if (cmd === 'health') {
+        await sock.sendMessage(chatId, { text:'🔍 *Checking API health...*' }, buildSafeQuote(m));
+        const results = [];
+        // Test AI
+        try {
+            const res = await callAI("Reply with 'OK' only.");
+            results.push(res.includes('OK') ? '✅ AI API: Healthy' : `⚠️ AI API: Unexpected (${res.slice(0,30)})`);
+        } catch(e) { results.push(`❌ AI API: ${e.message.slice(0,50)}`); }
+        // Test Infip
+        const infipOk = await ensureInfipKey();
+        results.push(infipOk ? '✅ Infip API: Healthy' : '❌ Infip API: Failed');
+        // Rate limit
+        const canReq = checkRate();
+        results.push(canReq ? '✅ Rate Limit: Clear' : '⚠️ Rate Limit: Active');
+        return send('🔍 API Health', results.join('\n'));
+    }
+
+    if (cmd === 'reset') {
+        STATE.apiRPM    = [];
+        STATE.apiRPH    = [];
+        STATE.apiStats  = { ai:0, image:0, errors:0 };
+        return send('✅ Reset', 'All API stats reset.');
+    }
+
+    if (cmd === 'config') {
+        const subparts = parts.slice(2);
+        const key   = subparts[0];
+        const value = subparts[1];
+        if (!key || !value) return send('Usage', '.apimon config <key> <value>\nKeys: timeout, max_retries, max_rpm');
+        if (key === 'timeout')     CFG.TIMEOUT     = parseInt(value)*1000;
+        else if (key === 'max_retries') CFG.MAX_RETRIES = parseInt(value);
+        else if (key === 'max_rpm') CFG.MAX_RPM    = parseInt(value);
+        else return send('❌ Error', `Unknown key: ${key}`);
+        return send('✅ Config Updated', `${key} = ${value}`);
+    }
+
+    return send('📊 API Monitor', [
+        '.apimon status  — usage stats',
+        '.apimon health  — check API health',
+        '.apimon reset   — reset stats',
+        '.apimon config <key> <value> — update config'
+    ].join('\n'));
+});
+
+// ─────────────────────────────────────────
+// .autoenhance — Toggle smart message rewriting
+// ─────────────────────────────────────────
+commandRegister({
+    pattern:  'autoenhance',
+    cmdname:  'autoenhance',
+    alias:    ['smartedit','aienhance','msgedit'],
+    type:     'ai',
+    category: 'AI',
+    desc:     'Toggle AI auto-enhance for sent messages (fixes grammar, improves clarity).',
+    react:    '✍️',
+    filename: __filename
+}, async (arg1, ...args) => {
+    const { m, sock } = resolveContext(arg1, args);
+    const rawId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
+    const chatId = typeof rawId === 'string' ? rawId : null;
+    if (!chatId) return;
+
+    const body   = m.body || m.text || '';
+    const parts  = body.trim().split(/\s+/);
+    const action = (parts[1]||'status').toLowerCase();
+    const send   = (hdr, txt) => sendFmt(sock, chatId, m, hdr, txt);
+
+    if (action === 'on')  STATE.autoEnhance = true;
+    if (action === 'off') STATE.autoEnhance = false;
+
+    return send('✍️ Auto-Enhance', [
+        `Status: *${STATE.autoEnhance ? 'ON ✅' : 'OFF ❌'}*`,
+        '',
+        'What it does:',
+        '• Fixes spelling & grammar',
+        '• Improves text clarity',
+        '• Preserves original tone',
+        '• Works on messages sent to bot in DM/chat mode',
+        '',
+        'Usage: .autoenhance [on|off|status]'
+    ].join('\n'));
+});
+
+// ─────────────────────────────────────────
+// AUTO-REPLY WATCHER (on: body — monitors all incoming messages)
+// ─────────────────────────────────────────
+commandRegister({
+    pattern:        '.*',
+    on:             'body',
+    dontAddCommandList: true,
+    type:           'ai',
+    category:       'AI',
+    filename:       __filename
+}, async (arg1, ...args) => {
+    const { m, sock } = resolveContext(arg1, args);
+
+    // Skip own messages & commands
+    if (m.key?.fromMe) return;
+    const body = m.body || m.text || '';
+    if (!body && !m.message?.imageMessage) return;
+    if (body.startsWith('.') || body.startsWith('!') || body.startsWith('/')) return;
+
+    const senderId = m.sender || m.key?.participant || (m.key?.remoteJid?.includes('@s') ? m.key.remoteJid : null);
+    const chatId   = m.chat || m.from || m.jid || m.key?.remoteJid;
+    const isGroup  = chatId?.includes('@g.us');
+    const isDM     = !isGroup;
+
+    // Priority 1: Global stalk
+    if (senderId && STATE.stalkTargets[senderId]) {
+        return await processAutoReply(m, sock, STATE.stalkTargets[senderId], 'stalk');
+    }
+
+    // Priority 2: Local target (in this chat)
+    if (senderId && STATE.activeTargets[senderId]) {
+        return await processAutoReply(m, sock, STATE.activeTargets[senderId], 'target');
+    }
+
+    // Priority 3: Active chat
+    if (chatId && STATE.activeChats[chatId]) {
+        return await processAutoReply(m, sock, STATE.activeChats[chatId], 'chat');
+    }
+
+    // Priority 4: DM mode
+    if (isDM && STATE.dmMode) {
+        const gem     = STATE.dmGem || DEFAULT_PERSONA;
+        const dmCtx   = { gem, history:[] };
+        return await processAutoReply(m, sock, dmCtx, 'dm');
+    }
+});
+
+// ==============================================================================
+// DONE
+// ==============================================================================
+} else {
+    console.error('❌ CRITICAL: AIGems module failed to map command registration function.');
+}
