@@ -1,13 +1,15 @@
 /**
  * @module AIGems
- * @description Full AI Suite — Gem Personas, QuillBot Brain, Infip Image Gen,
- *              Dynamic Profile, Chat Autopilot, API Monitoring.
- *              Converted from Python userbot to Atassa Bulletproof Framework.
- * @note Built using the Atassa Bulletproof Framework architecture.
+ * @description Advanced AI System — Gem Personas, Image Generation, Auto-Reply Watcher,
+ *              Message Auto-Enhance, Translate, Creative Writing & API Monitoring.
+ * @note Converted from Python aimod | Built for Atassa Bulletproof Framework
+ * @credentials Preserved exactly: QuillBot cookies, ImgBB key, Infip API pool
  */
 
+'use strict';
+
 // ==============================================================================
-// 1. DYNAMIC REGISTRAR (Do not modify)
+// 1. DYNAMIC REGISTRAR
 // ==============================================================================
 let commandRegister;
 try {
@@ -21,1373 +23,1385 @@ try {
 // 2. DEPENDENCIES
 // ==============================================================================
 const axios  = require('axios');
-const fs     = require('fs');
-const fsp    = require('fs').promises;
 const path   = require('path');
-const os     = require('os');
-const { exec } = require('child_process');
+const fs     = require('fs');
 
 let Database;
-try { Database = require('better-sqlite3'); } catch(e) {
-    console.error('[AIGems] better-sqlite3 not found:', e.message);
+try { Database = require('better-sqlite3'); } catch (e) {
+    console.error('[AIGems] better-sqlite3 not found. DB features disabled.');
 }
 
 // ==============================================================================
-// 3. CORE UTILITIES (Do not modify)
+// 3. CONFIGURATION  ← all credentials preserved exactly from original
 // ==============================================================================
-const resolveContext = (arg1, args) => {
-    let sock = global.conn || global.client || arg1.bot || arg1.client;
-    let m = arg1;
-    const allArgs = [arg1, ...args];
-    allArgs.forEach(arg => {
-        if (arg && typeof arg === 'object' && !Array.isArray(arg)) {
-            if (typeof arg.sendMessage === 'function') sock = arg;
-            else if (arg.sock && typeof arg.sock.sendMessage === 'function') sock = arg.sock;
-            else if (arg.bot && typeof arg.bot.sendMessage === 'function') sock = arg.bot;
-            if (arg.chat || arg.from || arg.jid || (arg.key && arg.key.remoteJid)) m = arg;
-        }
-    });
-    return { m, sock };
-};
-
-const buildSafeQuote = (m) => {
-    if (!m || !m.key || !m.key.remoteJid || !m.key.id) return {};
-    const cleanKey = {
-        remoteJid: String(m.key.remoteJid),
-        fromMe:    Boolean(m.key.fromMe),
-        id:        String(m.key.id)
-    };
-    if (m.key.participant) cleanKey.participant = String(m.key.participant);
-    return { quoted: { key: cleanKey, message: m.message || {} } };
-};
-
-// ==============================================================================
-// 4. CONFIGURATION  (preserve original credentials exactly)
-// ==============================================================================
-const CFG = {
-    // QuillBot AI cookies & headers (DO NOT CHANGE)
-    QB_COOKIES: {
-        'abIDV2': '546',
-        'anonID': 'f7ceed385778e221',
-        'premium': 'false',
-        'acceptedPremiumModesTnc': 'false',
-        '_sp_ses.48cd': '*',
-        'connect.sid': 's%3AoNTyr66sFMpJww2YC1k9jsS5rG8gfAh_.Sm0N0bBqdEBKfsYVLxJ%2FePg%2B%2FyDjynTPY69eA57QGIk',
-        'qdid': '78e86ed47333249550c398b65d45ad12',
-        'authenticated': 'true',
-        '_sp_id.48cd': '37c7e1f4-cd04-4797-afdf-d0b8e6ae880f.1760000217.3.1765560556.1765046295'
+const Config = {
+    DB_PATH            : path.join(__dirname, '..', 'gift', 'database', 'gems_ai.db'),
+    MAX_HISTORY_DEPTH  : 30,
+    IMGBB_KEY          : 'afcf96b3fa068c1ce3ea7f5d90b2c849',
+    INFIP_KEY_POOL     : ['infip-4ccc6287','infip-30f9b23c','infip-820535e7','infip-30a7d4bc','infip-551dc9e9'],
+    INFIP_BASE_URL     : 'https://api.infip.pro',
+    IMG_MODEL          : 'phoenix',
+    IMG_SIZE           : '1024x1024',
+    IMG_COUNT          : 1,
+    IMG_QUALITY        : 'standard',
+    IMG_STYLE          : 'vivid',
+    MAX_RPM            : 60,
+    MAX_RPH            : 1000,
+    API_TIMEOUT        : 60000,
+    MAX_RETRIES        : 3,
+    AUTH_COOKIES : {
+        abIDV2                 : '546',
+        anonID                 : 'f7ceed385778e221',
+        premium                : 'false',
+        acceptedPremiumModesTnc: 'false',
+        '_sp_ses.48cd'         : '*',
+        'connect.sid'          : 's%3AoNTyr66sFMpJww2YC1k9jsS5rG8gfAh_.Sm0N0bBqdEBKfsYVLxJ%2FePg%2B%2FyDjynTPY69eA57QGIk',
+        qdid                   : '78e86ed47333249550c398b65d45ad12',
+        authenticated          : 'true',
+        '_sp_id.48cd'          : '37c7e1f4-cd04-4797-afdf-d0b8e6ae880f.1760000217.3.1765560556.1765046295'
     },
-    QB_HEADERS: {
-        'accept': 'text/event-stream',
-        'accept-language': 'en-US,en;q=0.7',
-        'content-type': 'application/json',
-        'origin': 'https://quillbot.com',
-        'referer': 'https://quillbot.com/ai-chat',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
-        'webapp-version': '38.25.1'
+    AUTH_HEADERS : {
+        accept              : 'text/event-stream',
+        'accept-language'   : 'en-US,en;q=0.7',
+        'content-type'      : 'application/json',
+        origin              : 'https://quillbot.com',
+        referer             : 'https://quillbot.com/ai-chat',
+        'user-agent'        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+        'webapp-version'    : '38.25.1'
     },
+    IMG_MODELS : {
+        'img3'            : { tier:'free',  desc:'Basic generation' },
+        'img4'            : { tier:'free',  desc:'Enhanced basic' },
+        'z-image-turbo'   : { tier:'free',  desc:'Fast turbo' },
+        'nbpro'           : { tier:'pro',   desc:'Professional quality' },
+        'nano-banana'     : { tier:'pro',   desc:'High-end model' },
+        'qwen'            : { tier:'free',  desc:'Qwen model' },
+        'flux-schnell'    : { tier:'free',  desc:'Fast Flux' },
+        'flux2-klein-9b'  : { tier:'free',  desc:'Flux 2 Klein 9B' },
+        'flux2-klein-4b'  : { tier:'free',  desc:'Flux 2 Klein 4B' },
+        'flux2-dev'       : { tier:'free',  desc:'Flux 2 Dev (quality)' },
+        'lucid-origin'    : { tier:'free',  desc:'Lucid Origin' },
+        'phoenix'         : { tier:'free',  desc:'Phoenix (default)' },
+        'sdxl'            : { tier:'free',  desc:'Stable Diffusion XL' },
+        'sdxl-lite'       : { tier:'free',  desc:'Lightweight SDXL' },
+        'dreamshaper'     : { tier:'free',  desc:'Artistic DreamShaper' }
+    }
+};
 
-    // Infip Image API (DO NOT CHANGE)
-    INFIP_BASE: 'https://api.infip.pro',
-    INFIP_KEY:  process.env.INFIP_API_KEY || `infip-${['4ccc6287','30f9b23c','820535e7','30a7d4bc','551dc9e9'][Math.floor(Math.random()*5)]}`,
+// ==============================================================================
+// 4. DATABASE  (better-sqlite3 — synchronous)
+// ==============================================================================
+let db = null;
+if (Database) {
+    try {
+        db = new Database(Config.DB_PATH);
+        db.pragma('journal_mode = WAL');
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS gems (
+                name       TEXT PRIMARY KEY,
+                content    TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS ai_sessions (
+                session_id TEXT PRIMARY KEY,
+                gem_name   TEXT,
+                history    TEXT DEFAULT '[]',
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS api_log (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                req_time     INTEGER NOT NULL,
+                req_type     TEXT DEFAULT 'ai'
+            );
+        `);
+        // Prune old log rows on startup
+        db.prepare(`DELETE FROM api_log WHERE req_time < ?`).run(Date.now() - 86400000 * 7);
+        console.log('[AIGems] ✅ Database ready');
+    } catch (e) {
+        console.error('[AIGems] DB init failed:', e.message);
+        db = null;
+    }
+}
 
-    // Image defaults
-    IMG_MODEL:   'phoenix',
-    IMG_SIZE:    '1024x1024',
-    IMG_COUNT:   1,
-    IMG_QUALITY: 'standard',
-    IMG_STYLE:   'vivid',
+// DB helpers
+const dbGet   = (q, ...p) => { try { return db?.prepare(q).get(...p);    } catch(e){ return null; } };
+const dbRun   = (q, ...p) => { try { return db?.prepare(q).run(...p);    } catch(e){ return null; } };
+const dbAll   = (q, ...p) => { try { return db?.prepare(q).all(...p)||[]; } catch(e){ return []; }  };
 
-    IMG_MODELS: {
-        'flux-schnell': { tier:'free', desc:'Fast Flux model' },
-        'flux2-dev':    { tier:'free', desc:'Flux 2 Development' },
-        'flux2-klein-9b': { tier:'free', desc:'Flux 2 Klein 9B' },
-        'sdxl':         { tier:'free', desc:'Stable Diffusion XL' },
-        'sdxl-lite':    { tier:'free', desc:'Lightweight SDXL' },
-        'dreamshaper':  { tier:'free', desc:'Artistic DreamShaper' },
-        'phoenix':      { tier:'free', desc:'Phoenix model' },
-        'lucid-origin': { tier:'free', desc:'Lucid Origin' },
-        'z-image-turbo':{ tier:'free', desc:'Fast generation', async:true },
-        'nbpro':        { tier:'pro',  desc:'Professional quality', async:true },
-        'nano-banana':  { tier:'pro',  desc:'High-end model', async:true },
-        'qwen':         { tier:'free', desc:'Qwen model', async:true },
-        'img3':         { tier:'free', desc:'Basic generation' },
-        'img4':         { tier:'free', desc:'Enhanced basic' }
+const Gems = {
+    get   : (name) => dbGet('SELECT content FROM gems WHERE name=?', name.toLowerCase().trim())?.content ?? null,
+    save  : (name, content) => !!dbRun('INSERT OR REPLACE INTO gems(name,content) VALUES(?,?)', name.toLowerCase().trim(), content)?.changes,
+    del   : (name) => (dbRun('DELETE FROM gems WHERE name=?', name.toLowerCase().trim())?.changes ?? 0) > 0,
+    list  : () => dbAll('SELECT name FROM gems ORDER BY name').map(r => r.name)
+};
+
+// Periodic cleanup of stale sessions (every 6 h)
+setInterval(() => {
+    try { db?.prepare(`DELETE FROM ai_sessions WHERE updated_at < datetime('now','-3 days')`).run(); } catch(e){}
+}, 21600000);
+
+// ==============================================================================
+// 5. RATE LIMITER + API MONITOR
+// ==============================================================================
+const Monitor = {
+    times  : [], // minute-level
+    hTimes : [], // hour-level
+    daily  : { ai:0, img:0, err:0, day: new Date().toDateString() },
+
+    allow() {
+        const now = Date.now();
+        this.times  = this.times.filter(t  => now - t < 60000);
+        this.hTimes = this.hTimes.filter(t => now - t < 3600000);
+        return this.times.length < Config.MAX_RPM && this.hTimes.length < Config.MAX_RPH;
     },
-
-    // Limits
-    MAX_RPM:     60,
-    MAX_RPH:     1000,
-    MAX_RETRIES: 3,
-    TIMEOUT:     60000,
-    HISTORY_CAP: 30,
-    CACHE_TTL:   3600,
-    IMGBB_KEY:   'afcf96b3fa068c1ce3ea7f5d90b2c849'   // DO NOT CHANGE
+    record(type = 'ai') {
+        const now = Date.now();
+        this.times.push(now); this.hTimes.push(now);
+        const today = new Date().toDateString();
+        if (today !== this.daily.day) this.daily = { ai:0, img:0, err:0, day:today };
+        if (type === 'ai')  this.daily.ai++;
+        if (type === 'img') this.daily.img++;
+        try { dbRun('INSERT INTO api_log(req_time,req_type) VALUES(?,?)', now, type); } catch(e){}
+    },
+    error() { this.daily.err++; },
+    stats() {
+        const now = Date.now();
+        return {
+            rpm  : this.times.filter(t  => now - t < 60000).length,
+            rph  : this.hTimes.filter(t => now - t < 3600000).length,
+            ...this.daily
+        };
+    }
 };
 
 // ==============================================================================
-// 5. SQLITE DATABASE (Gem storage)
+// 6. CIRCUIT BREAKER
 // ==============================================================================
-const DB_PATH = path.join(__dirname, '..', 'gift', 'database', 'aigems.db');
-
-let _db = null;
-const getDB = () => {
-    if (_db) return _db;
-    if (!Database) throw new Error('better-sqlite3 not available');
-    _db = new Database(DB_PATH);
-    _db.exec(`
-        CREATE TABLE IF NOT EXISTS gems (
-            name    TEXT PRIMARY KEY,
-            content TEXT NOT NULL,
-            created INTEGER DEFAULT (strftime('%s','now'))
-        );
-        CREATE TABLE IF NOT EXISTS pfp_history (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            filepath  TEXT,
-            prompt    TEXT,
-            ts        INTEGER DEFAULT (strftime('%s','now'))
-        );
-        CREATE TABLE IF NOT EXISTS profile_log (
-            id      INTEGER PRIMARY KEY AUTOINCREMENT,
-            type    TEXT,
-            content TEXT,
-            ts      INTEGER DEFAULT (strftime('%s','now'))
-        );
-    `);
-    return _db;
-};
-
-const DB = {
-    gemSave:   (name, content)    => getDB().prepare('INSERT OR REPLACE INTO gems(name,content) VALUES(?,?)').run(name.toLowerCase(), content),
-    gemGet:    (name)             => getDB().prepare('SELECT content FROM gems WHERE name=?').get(name.toLowerCase())?.content || null,
-    gemDel:    (name)             => getDB().prepare('DELETE FROM gems WHERE name=?').run(name.toLowerCase()).changes > 0,
-    gemList:   ()                 => getDB().prepare('SELECT name FROM gems ORDER BY name').all().map(r => r.name),
-    logProfile:(type,content)    => getDB().prepare('INSERT INTO profile_log(type,content) VALUES(?,?)').run(type, content),
-    profileHistory:(type,limit)  => getDB().prepare('SELECT content FROM profile_log WHERE type=? ORDER BY ts DESC LIMIT ?').all(type, limit).map(r=>r.content),
-    savePfp:   (fp, prompt)      => getDB().prepare('INSERT INTO pfp_history(filepath,prompt) VALUES(?,?)').run(fp, prompt),
-    pfpHistory:(limit)           => getDB().prepare('SELECT filepath,prompt,ts FROM pfp_history ORDER BY ts DESC LIMIT ?').all(limit)
+const Circuit = {
+    fails    : 0,
+    lastFail : 0,
+    threshold: 5,
+    ttl      : 300000,
+    fallbacks: [
+        "brain.exe has stopped working, retry in a sec",
+        "signal's weak on my end right now",
+        "neural link is glitchy, give me a moment",
+        "something's off with my connection, try again"
+    ],
+    isOpen()     { return this.fails >= this.threshold && Date.now() - this.lastFail < this.ttl; },
+    fail()       { this.fails++; this.lastFail = Date.now(); Monitor.error(); },
+    success()    { this.fails = 0; },
+    reset()      { this.fails = 0; this.lastFail = 0; },
+    fallback()   { return this.fallbacks[Math.floor(Math.random() * this.fallbacks.length)]; }
 };
 
 // ==============================================================================
-// 6. GLOBAL STATE (Active modes, history, cache)
+// 7. CORE AI CLIENT  (QuillBot streaming API — preserved exactly)
 // ==============================================================================
-const STATE = {
-    dmMode:       false,
-    dmGem:        null,
-    activeChats:  {},   // chatId → { gem, history[] }
-    activeTargets:{},   // userId → { gem, history[] }
-    stalkTargets: {},   // userId → { gem, history[] }
-    autoEnhance:  true,
-    autoProfile:  false,
-    profileInterval: 3600 * 1000,
-    _profileTimer: null,
+const askAI = async (prompt, imageUrls = []) => {
+    if (Circuit.isOpen()) return { text: Circuit.fallback(), err: true };
+    if (!Monitor.allow())  return { text: '⚠️ Rate limit hit — wait a moment', err: true };
 
-    imgCache: {},       // prompt_key → { urls[], ts }
-    apiRPM:   [],       // timestamps for rate limiting
-    apiRPH:   [],
-    apiStats: { ai:0, image:0, errors:0 }
-};
-
-const DEFAULT_PERSONA =
-    'You are a witty, slightly sarcastic but helpful assistant. ' +
-    'Keep responses short, casual. Recall details from Chat History provided.';
-
-// ==============================================================================
-// 7. RATE LIMITER
-// ==============================================================================
-const checkRate = () => {
-    const now = Date.now();
-    STATE.apiRPM = STATE.apiRPM.filter(t => now - t < 60000);
-    STATE.apiRPH = STATE.apiRPH.filter(t => now - t < 3600000);
-    return STATE.apiRPM.length < CFG.MAX_RPM && STATE.apiRPH.length < CFG.MAX_RPH;
-};
-const recordReq = (type='ai') => {
-    const now = Date.now();
-    STATE.apiRPM.push(now);
-    STATE.apiRPH.push(now);
-    STATE.apiStats[type] = (STATE.apiStats[type] || 0) + 1;
-};
-
-// ==============================================================================
-// 8. QUILLBOT AI CLIENT
-// ==============================================================================
-const cookieStr = Object.entries(CFG.QB_COOKIES).map(([k,v])=>`${k}=${v}`).join('; ');
-
-const cleanAIText = (text) => {
-    if (!text) return '';
-    return text
-        .replace(/\\\(/g,'').replace(/\\\)/g,'')
-        .replace(/\\\[/g,'').replace(/\\\]/g,'')
-        .replace(/\\([a-zA-Z])/g,'$1')
-        .trim();
-};
-
-const callAI = async (prompt, imageUrls=[]) => {
-    if (!checkRate()) return '⚠️ Rate limit reached. Please wait a moment.';
-
-    const filesPayload = imageUrls.map(url => ({
-        url, mimeType:'image/jpeg', name:'image.jpg'
-    }));
-
+    const cookieStr = Object.entries(Config.AUTH_COOKIES).map(([k,v]) => `${k}=${v}`).join('; ');
     const payload = {
-        stream: true,
-        message: { role:'user', content:prompt, files:filesPayload },
-        product: 'ai-chat',
-        prompt: { id:'ai_chat' },
-        tools: []
+        stream  : true,
+        message : {
+            role   : 'user',
+            content: prompt,
+            files  : imageUrls.map(url => ({ url, mimeType:'image/jpeg', name:'image.jpg' }))
+        },
+        product : 'ai-chat',
+        prompt  : { id:'ai_chat' },
+        tools   : []
     };
 
-    for (let attempt = 0; attempt < CFG.MAX_RETRIES; attempt++) {
+    for (let attempt = 0; attempt < Config.MAX_RETRIES; attempt++) {
         try {
-            recordReq('ai');
-            const response = await axios.post(
+            Monitor.record('ai');
+            const res = await axios.post(
                 'https://quillbot.com/api/raven/quill-chat/responses',
                 payload,
                 {
-                    headers: { ...CFG.QB_HEADERS, 'cookie': cookieStr },
-                    responseType: 'stream',
-                    timeout: CFG.TIMEOUT
+                    headers      : { ...Config.AUTH_HEADERS, Cookie: cookieStr },
+                    timeout      : Config.API_TIMEOUT,
+                    responseType : 'text'
                 }
             );
 
-            let fullText = '';
-            await new Promise((resolve, reject) => {
-                response.data.on('data', chunk => {
-                    const lines = chunk.toString().split('\n');
-                    for (const line of lines) {
-                        if (line.startsWith('data: {') && line.includes('"chunk":"')) {
-                            try {
-                                const obj = JSON.parse(line.slice(6));
-                                fullText += obj.chunk || '';
-                            } catch(_) {}
-                        }
-                    }
-                });
-                response.data.on('end', resolve);
-                response.data.on('error', reject);
-            });
-
-            if (!fullText.trim()) {
-                STATE.apiStats.errors++;
-                if (attempt < CFG.MAX_RETRIES - 1) { await delay(1000 * (attempt+1)); continue; }
-                return '⚠️ Empty response from AI service.';
+            if (res.status !== 200) {
+                Circuit.fail();
+                if (res.status === 429) return { text:'⚠️ QuillBot rate limit reached', err:true };
+                if (attempt < Config.MAX_RETRIES - 1) { await sleep(1000 * (attempt + 1)); continue; }
+                return { text:'⚠️ AI service unavailable', err:true };
             }
-            return cleanAIText(fullText);
 
-        } catch (err) {
-            STATE.apiStats.errors++;
-            if (attempt < CFG.MAX_RETRIES - 1) { await delay(1000 * (2**attempt)); continue; }
-            return `⚠️ Neural Link Severed — ${err.message}. Check cookies.`;
+            let full = '';
+            for (const line of res.data.split('\n')) {
+                if (line.startsWith('data: {') && line.includes('"chunk":"')) {
+                    try { full += JSON.parse(line.slice(6)).chunk || ''; } catch(e){}
+                }
+            }
+
+            if (!full.trim()) {
+                Circuit.fail();
+                if (attempt < Config.MAX_RETRIES - 1) { await sleep(1000 * (attempt + 1)); continue; }
+                return { text:'⚠️ Got an empty response', err:true };
+            }
+
+            Circuit.success();
+            // Clean LaTeX/escape noise
+            const cleaned = full
+                .replace(/\\\(|\\\)/g,'').replace(/\\\[|\\\]/g,'')
+                .replace(/\\([a-zA-Z])/g,'$1').trim();
+            return { text: cleaned, err: false };
+
+        } catch (e) {
+            Circuit.fail();
+            if (attempt < Config.MAX_RETRIES - 1) await sleep(1000 * (attempt + 1));
         }
     }
-    return '⚠️ AI service unavailable after retries.';
+
+    return { text: Circuit.fallback(), err: true };
 };
 
 // ==============================================================================
-// 9. IMGBB UPLOADER (for vision)
+// 8. IMGBB UPLOADER
 // ==============================================================================
-const uploadToImgBB = async (filePath) => {
-    if (!fs.existsSync(filePath)) return null;
-    try {
-        const FormData = require('form-data');
-        const form = new FormData();
-        form.append('image', fs.createReadStream(filePath));
-        const res = await axios.post(
-            `https://api.imgbb.com/1/upload?key=${CFG.IMGBB_KEY}&expiration=600`,
-            form, { headers: form.getHeaders(), timeout: 30000 }
-        );
-        return res.data?.data?.url || null;
-    } catch(e) {
-        STATE.apiStats.errors++;
-        return null;
+const uploadImgBB = async (filePath) => {
+    if (!fs.existsSync(filePath) || !Monitor.allow()) return null;
+    const FormData = require('form-data');
+    for (let i = 0; i < Config.MAX_RETRIES; i++) {
+        try {
+            Monitor.record('img');
+            const form = new FormData();
+            form.append('image', fs.createReadStream(filePath));
+            const res = await axios.post(
+                `https://api.imgbb.com/1/upload?key=${Config.IMGBB_KEY}&expiration=600`,
+                form, { headers: form.getHeaders(), timeout: 30000 }
+            );
+            if (res.data?.data?.url) return res.data.data.url;
+        } catch(e) {
+            Monitor.error();
+            if (i < Config.MAX_RETRIES - 1) await sleep(1000 * (i + 1));
+        }
     }
+    return null;
 };
 
 // ==============================================================================
-// 10. INFIP IMAGE GENERATOR
+// 9. IMAGE GENERATOR  (Infip API — key pool preserved)
 // ==============================================================================
-let infipKey = CFG.INFIP_KEY;
-let infipKeyTs = 0;
+let activeInfipKey  = Config.INFIP_KEY_POOL[Math.floor(Math.random() * Config.INFIP_KEY_POOL.length)];
+let infipValidated  = false;
+const imgCache      = new Map();
 
-const ensureInfipKey = async () => {
-    if (infipKey && (Date.now() - infipKeyTs < 300000)) return true;
+const infipHeaders  = () => ({
+    'Authorization' : `Bearer ${activeInfipKey}`,
+    'Content-Type'  : 'application/json',
+    'User-Agent'    : 'PyGem-Userbot/1.0'
+});
+
+const validateInfip = async () => {
+    if (infipValidated) return true;
     try {
-        const res = await axios.post(`${CFG.INFIP_BASE}/v1/api-keys`, {}, { timeout:20000 });
-        if (res.status === 200 && res.data?.api_key) {
-            infipKey = res.data.api_key;
-            infipKeyTs = Date.now();
-            return true;
-        }
-    } catch(_) {}
-    // Try with existing key
-    try {
-        const res = await axios.get(`${CFG.INFIP_BASE}/v1/models`, {
-            headers: { Authorization: `Bearer ${infipKey}` }, timeout:15000
-        });
-        if (res.status === 200) { infipKeyTs = Date.now(); return true; }
-    } catch(_) {}
+        const res = await axios.get(`${Config.INFIP_BASE_URL}/v1/models`, { headers: infipHeaders(), timeout: 15000 });
+        if (res.status === 200) { infipValidated = true; return true; }
+    } catch (e) {
+        // Try generating a fresh key
+        try {
+            const res = await axios.post(`${Config.INFIP_BASE_URL}/v1/api-keys`, {}, { timeout: 15000 });
+            if (res.data?.api_key) { activeInfipKey = res.data.api_key; infipValidated = true; return true; }
+        } catch(e2) {}
+    }
+    infipValidated = true; // stop retrying
     return false;
 };
 
-const generateImage = async (prompt, opts={}) => {
-    if (!(await ensureInfipKey())) return [];
-    if (!checkRate()) return [];
+const generateImage = async (prompt, opts = {}) => {
+    const model   = opts.model   || Config.IMG_MODEL;
+    const size    = opts.size    || Config.IMG_SIZE;
+    const count   = Math.min(opts.count || Config.IMG_COUNT, 4);
+    const quality = opts.quality || Config.IMG_QUALITY;
+    const style   = opts.style   || Config.IMG_STYLE;
 
-    // Cache check
-    const cacheKey = `${prompt}_${opts.model||CFG.IMG_MODEL}_${opts.size||CFG.IMG_SIZE}`;
-    const cached = STATE.imgCache[cacheKey];
-    if (cached && (Date.now() - cached.ts < CFG.CACHE_TTL * 1000)) return cached.urls;
+    const ckey = `${model}::${size}::${prompt.slice(0,80)}`;
+    const hit  = imgCache.get(ckey);
+    if (hit && Date.now() - hit.ts < 3600000) return hit.urls;
 
-    const payload = {
-        model:           opts.model   || CFG.IMG_MODEL,
-        prompt,
-        n:               Math.min(opts.count || CFG.IMG_COUNT, 4),
-        size:            opts.size    || CFG.IMG_SIZE,
-        response_format: 'url',
-        quality:         opts.quality || CFG.IMG_QUALITY,
-        style:           opts.style   || CFG.IMG_STYLE
-    };
+    if (!Monitor.allow()) return [];
+    await validateInfip();
 
-    try {
-        recordReq('image');
-        const res = await axios.post(`${CFG.INFIP_BASE}/v1/images/generations`, payload, {
-            headers: {
-                Authorization: `Bearer ${infipKey}`,
-                'Content-Type': 'application/json'
-            },
-            timeout: CFG.TIMEOUT
-        });
-        const urls = (res.data?.data || []).map(d => d.url);
-        if (urls.length) STATE.imgCache[cacheKey] = { urls, ts: Date.now() };
-        return urls;
-    } catch(e) {
-        STATE.apiStats.errors++;
-        return [];
-    }
-};
-
-const enhancePrompt = async (prompt) => {
-    const enhanced = await callAI(
-        `Enhance this image generation prompt for better AI art results. ` +
-        `More descriptive, same intent. Return ONLY the enhanced prompt:\n\n${prompt}`
-    );
-    return (enhanced && !enhanced.startsWith('⚠️')) ? enhanced : prompt;
-};
-
-// ==============================================================================
-// 11. GEM / HISTORY HELPERS
-// ==============================================================================
-const addHistory = (ctx, role, content) => {
-    if (!ctx.history) ctx.history = [];
-    const ts = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
-    ctx.history.push(`[${ts}] ${role}: ${content}`);
-    if (ctx.history.length > CFG.HISTORY_CAP)
-        ctx.history = ctx.history.slice(-CFG.HISTORY_CAP);
-};
-
-const buildPrompt = (system, history, input) =>
-    `SYSTEM INSTRUCTIONS:\n${system}\n\n` +
-    `--- CONVERSATION MEMORY ---\n${history.join('\n')}\n` +
-    `---------------------------\n` +
-    `LATEST MESSAGE: ${input}\n` +
-    `YOUR REPLY:`;
-
-// ==============================================================================
-// 12. HUMAN BEHAVIOUR SIMULATION (typing delay)
-// ==============================================================================
-const delay = (ms) => new Promise(r => setTimeout(r, ms));
-const randomBetween = (a,b) => Math.random()*(b-a)+a;
-
-const simulateTyping = async (sock, chatId, text) => {
-    if (!text) return;
-    const wpm   = randomBetween(5,9);
-    const dur   = Math.min(text.length / wpm, 10);
-    try {
-        await sock.sendPresenceUpdate('composing', chatId);
-        await delay(Math.max(dur * 1000, 1000));
-        await sock.sendPresenceUpdate('paused', chatId);
-    } catch(_) {}
-};
-
-// ==============================================================================
-// 13. WHATSAPP PROFILE UPDATER
-// ==============================================================================
-const updateWAName = async (sock, name) => {
-    try {
-        await sock.updateProfileName(name);
-        return true;
-    } catch(e) {
-        // Fallback IQ node approach (Baileys low-level)
+    for (let i = 0; i < Config.MAX_RETRIES; i++) {
         try {
-            await sock.query({
-                tag:'iq',
-                attrs:{to:'s.whatsapp.net',type:'set',xmlns:'vcard'},
-                content:[{
-                    tag:'vcard',attrs:{},
-                    content:Buffer.from(`BEGIN:VCARD\nVERSION:3.0\nFN:${name}\nEND:VCARD`)
-                }]
-            });
-            return true;
-        } catch(_){ return false; }
-    }
-};
-
-const updateWABio = async (sock, bio) => {
-    try {
-        await sock.updateProfileStatus(bio);
-        return true;
-    } catch(e) { return false; }
-};
-
-const updateWAPFP = async (sock, imgPath) => {
-    try {
-        if (!fs.existsSync(imgPath)) return false;
-        const buf = fs.readFileSync(imgPath);
-        await sock.updateProfilePicture(sock.user.id, buf);
-        return true;
-    } catch(e) {
-        // Secondary attempt via IQ node (like owner.gmd)
-        try {
-            const buf = fs.readFileSync(imgPath);
-            const { Jimp } = require('jimp');
-            const img = await Jimp.read(buf);
-            img.scaleToFit({ w:720, h:720 });
-            const processed = await img.getBuffer('image/jpeg');
-            await sock.query({
-                tag:'iq',
-                attrs:{to:'s.whatsapp.net',type:'set',xmlns:'w:profile:picture'},
-                content:[{tag:'picture',attrs:{type:'image'},content:processed}]
-            });
-            return true;
-        } catch(_){ return false; }
-    }
-};
-
-// ==============================================================================
-// 14. DYNAMIC PROFILE GENERATOR
-// ==============================================================================
-const PROFILE_CATEGORIES = [
-    { key:'anime',   ai_ask:'Generate a detailed, emotional anime landscape prompt inspired by Makoto Shinkai. Include time of day, weather, lighting, mood. Return ONLY the prompt.' },
-    { key:'nature',  ai_ask:'Generate a beautiful nature photography prompt. Include golden-hour light, location, atmospheric details, emotional qualities. Return ONLY the prompt.' },
-    { key:'fantasy', ai_ask:'Generate an epic fantasy landscape prompt — magic, mythical creatures, dramatic lighting. Return ONLY the prompt.' },
-    { key:'cyber',   ai_ask:'Generate a cyberpunk cityscape prompt — neon lights, rain, futuristic architecture, specific mood. Return ONLY the prompt.' },
-    { key:'cosmic',  ai_ask:'Generate a cosmic/space scene — nebulae, celestial phenomena, vivid colors. Return ONLY the prompt.' },
-    { key:'season',  ai_ask:'Generate a seasonal landscape capturing a specific season in breathtaking detail. Return ONLY the prompt.' },
-    { key:'ghibli',  ai_ask:'Generate a Studio Ghibli-inspired nature prompt — nostalgic, hand-drawn feel, heartwarming. Return ONLY the prompt.' },
-    { key:'minimal', ai_ask:'Generate a minimalist landscape art prompt — simple geometry, limited palette, modern calm. Return ONLY the prompt.' }
-];
-
-const FALLBACK_PROMPTS = {
-    anime:   'Peaceful anime night landscape, lake reflection, fireflies, Milky Way, soft pastels, cinematic, nostalgic',
-    nature:  'Misty morning forest, sunbeams through trees, dew on spider webs, golden hour, ultra quality',
-    fantasy: 'Floating islands, waterfalls to the sky, magical bridges, dragons, vivid fantasy art',
-    cyber:   'Cyberpunk city at night, neon reflections on wet streets, holographic ads, futuristic beauty',
-    cosmic:  'Nebula clouds, star clusters, planets, ethereal purple-blue space scene, detailed space art',
-    season:  'Cherry blossom spring, pink petals falling, gentle breeze, soft pastels, detailed nature',
-    ghibli:  'Ghibli countryside, rolling green hills, fluffy clouds, warm sunlight, nostalgic animation style',
-    minimal: 'Minimalist mountain and sun, geometric shapes, limited palette, clean modern lines'
-};
-
-const QUALITY_MODS = [
-    'highly detailed, 8k resolution, professional photography',
-    'ultra realistic, sharp focus, dramatic lighting',
-    'masterpiece, best quality, intricate details',
-    'cinematic color grading, award-winning composition',
-    'breathtakingly beautiful, stunning visual quality'
-];
-
-const STYLE_MODS = [
-    'emotional and atmospheric',
-    'serene and peaceful',
-    'breathtaking and awe-inspiring',
-    'nostalgic and heartwarming',
-    'magical and enchanting'
-];
-
-const generateProfilePFP = async () => {
-    const cat = PROFILE_CATEGORIES[Math.floor(Math.random()*PROFILE_CATEGORIES.length)];
-    let aiPrompt = await callAI(cat.ai_ask);
-    if (!aiPrompt || aiPrompt.startsWith('⚠️')) aiPrompt = FALLBACK_PROMPTS[cat.key];
-    aiPrompt = aiPrompt.replace(/^"|"$/g,'').trim();
-
-    const finalPrompt = `${aiPrompt}, ${QUALITY_MODS[Math.floor(Math.random()*QUALITY_MODS.length)]}, ${STYLE_MODS[Math.floor(Math.random()*STYLE_MODS.length)]}`;
-
-    const models = ['flux2-dev','flux-schnell','sdxl','phoenix'];
-    for (const model of models) {
-        const urls = await generateImage(finalPrompt, { model, size:'1024x1024', count:1, quality:'hd', style:'vivid' });
-        if (urls.length) {
-            // Download image
-            const dlDir = path.join(__dirname,'..','gift','temp');
-            if (!fs.existsSync(dlDir)) fs.mkdirSync(dlDir, { recursive:true });
-            const fp = path.join(dlDir, `pfp_${Date.now()}.jpg`);
-            try {
-                const imgRes = await axios.get(urls[0], { responseType:'arraybuffer', timeout:30000 });
-                fs.writeFileSync(fp, imgRes.data);
-                DB.savePfp(fp, finalPrompt);
-                return fp;
-            } catch(_) {}
-        }
-    }
-    return null;
-};
-
-const generateProfileName = async () => {
-    const styles = [
-        'Use Unicode symbols and special characters to make it stand out',
-        'Use aesthetic letters and fancy Unicode fonts',
-        'Use cool modern cyberpunk style',
-        'Use minimal and clean aesthetic',
-        'Use bold dramatic styling with Unicode'
-    ];
-    const chosen = styles[Math.floor(Math.random()*styles.length)];
-    const name = await callAI(
-        `Generate a unique, creative display name. ${chosen}. ` +
-        `Return ONLY the name (max 20 chars).`
-    );
-    if (name && !name.startsWith('⚠️')) {
-        const clean = name.trim().replace(/\*\*|__|~~/g,'');
-        DB.logProfile('name', clean);
-        return clean;
-    }
-    return null;
-};
-
-const generateProfileBio = async () => {
-    const moods = ['mysterious','funny and witty','philosophical','minimalist','energetic','tech-focused and nerdy','dark and edgy','aesthetic and poetic'];
-    const mood  = moods[Math.floor(Math.random()*moods.length)];
-    const bio   = await callAI(
-        `Generate a creative social media bio. Make it ${mood}. ` +
-        `Under 70 characters. Include an emoji if fitting. ` +
-        `Return ONLY the bio text, no quotes.`
-    );
-    if (bio && !bio.startsWith('⚠️')) {
-        const clean = bio.trim().replace(/^["']|["']$/g,'').slice(0,70);
-        DB.logProfile('bio', clean);
-        return clean;
-    }
-    return null;
-};
-
-// ==============================================================================
-// 15. AUTO-REPLY ENGINE  (used by body watcher)
-// ==============================================================================
-const processAutoReply = async (m, sock, ctx, sourceType) => {
-    try {
-        const rawChatId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
-        const chatId    = typeof rawChatId === 'string' ? rawChatId : null;
-        if (!chatId) return;
-
-        const inputText = m.body || m.text ||
-            (m.message?.conversation) ||
-            (m.message?.extendedTextMessage?.text) ||
-            (m.message?.imageMessage?.caption) || '';
-
-        const imageUrls = [];
-
-        // If image, upload to ImgBB for vision
-        if (m.message?.imageMessage) {
-            try {
-                const tmp = path.join(os.tmpdir(), `vision_${Date.now()}.jpg`);
-                if (sock.downloadAndSaveMediaMessage) {
-                    await sock.downloadAndSaveMediaMessage(m.message.imageMessage, tmp.replace('.jpg',''));
-                    if (fs.existsSync(tmp)) {
-                        const url = await uploadToImgBB(tmp);
-                        if (url) imageUrls.push(url);
-                        fs.unlink(tmp, ()=>{});
-                    }
-                }
-            } catch(_) {}
-        }
-
-        if (!inputText && !imageUrls.length) return;
-
-        addHistory(ctx, 'User', inputText || '[Image sent]');
-        const fullPrompt = buildPrompt(ctx.gem, ctx.history, inputText || '[Analyze the image]');
-
-        // Typing simulation
-        await simulateTyping(sock, chatId, 'typing...');
-        const response = await callAI(fullPrompt, imageUrls);
-
-        if (!response || response.startsWith('⚠️')) return;
-        addHistory(ctx, 'AI', response);
-
-        const sendOptions = buildSafeQuote(m);
-        await sock.sendMessage(chatId, { text: response }, sendOptions);
-
-    } catch(e) {
-        console.error('[AIGems] Auto-reply error:', e.message);
-    }
-};
-
-// ==============================================================================
-// 16. HELPER: send formatted message
-// ==============================================================================
-const sendFmt = async (sock, chatId, m, header, body) => {
-    const text = `*${header}*\n\n${body}`;
-    const opts = buildSafeQuote(m);
-    try {
-        await sock.sendMessage(chatId, { text }, opts);
-    } catch(e) {
-        await sock.sendMessage(chatId, { text: `${header}\n\n${body}` }, opts);
-    }
-};
-
-// ==============================================================================
-// 17. PROFILE SCHEDULER
-// ==============================================================================
-const startProfileScheduler = (sock) => {
-    if (STATE._profileTimer) { clearInterval(STATE._profileTimer); }
-    STATE.autoProfile = true;
-    STATE._profileTimer = setInterval(async () => {
-        if (!STATE.autoProfile || !sock) return;
-        try {
-            const [name, bio, pfpPath] = await Promise.all([
-                generateProfileName(),
-                generateProfileBio(),
-                generateProfilePFP()
-            ]);
-            if (name)    await updateWAName(sock, name);
-            if (bio)     await updateWABio(sock, bio);
-            if (pfpPath) await updateWAPFP(sock, pfpPath);
-            console.log('[AIGems] Auto profile updated ✓');
+            Monitor.record('img');
+            const res = await axios.post(
+                `${Config.INFIP_BASE_URL}/v1/images/generations`,
+                { model, prompt, n: count, size, response_format:'url', quality, style },
+                { headers: infipHeaders(), timeout: Config.API_TIMEOUT }
+            );
+            if (res.status === 200) {
+                const urls = (res.data?.data || []).map(d => d.url);
+                if (urls.length) imgCache.set(ckey, { urls, ts: Date.now() });
+                return urls;
+            }
         } catch(e) {
-            console.error('[AIGems] Profile scheduler error:', e.message);
+            Monitor.error();
+            if (i < Config.MAX_RETRIES - 1) await sleep(1000 * (i + 1));
         }
-    }, STATE.profileInterval);
-};
-
-const stopProfileScheduler = () => {
-    STATE.autoProfile = false;
-    if (STATE._profileTimer) { clearInterval(STATE._profileTimer); STATE._profileTimer = null; }
+    }
+    return [];
 };
 
 // ==============================================================================
-// 18. COMMAND REGISTRATION
+// 10. GEM STATE  (runtime — all active sessions / modes)
+// ==============================================================================
+const State = {
+    dmActive       : false,
+    dmGem          : null,
+    activeChats    : new Map(),    // chatId  → { gem, history, gemName }
+    activeTargets  : new Map(),    // userJid → { gem, history, chatId, gemName }
+    globalStalkers : new Map(),    // userJid → { gem, history, gemName }
+    autoEnhance    : false,
+
+    DEFAULT_PERSONA :
+        'You are a witty, slightly sarcastic but helpful human user chatting on WhatsApp. ' +
+        'Keep responses short and casual, lowercase when appropriate. ' +
+        'Never act like a robotic assistant. ' +
+        'Recall all details from the conversation history provided. ' +
+        'Never reveal you are an AI or bot.',
+
+    addHistory(ctx, role, text) {
+        if (!ctx.history) ctx.history = [];
+        const ts = new Date().toLocaleTimeString('en', { hour12:false, hour:'2-digit', minute:'2-digit' });
+        ctx.history.push(`[${ts}] ${role}: ${text}`);
+        if (ctx.history.length > Config.MAX_HISTORY_DEPTH)
+            ctx.history = ctx.history.slice(-Config.MAX_HISTORY_DEPTH);
+    },
+
+    buildPrompt(sysPrompt, history, input) {
+        return (
+            `SYSTEM INSTRUCTIONS:\n${sysPrompt}\n\n` +
+            `--- CONVERSATION HISTORY ---\n${history.join('\n')}\n` +
+            `----------------------------\n` +
+            `LATEST MESSAGE: ${input}\n` +
+            `YOUR REPLY:`
+        );
+    }
+};
+
+// ==============================================================================
+// 11. MESSAGING UTILITIES
+// ==============================================================================
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+/** Send a "Processing…" message and return it so we can edit it later */
+const sendProcessing = async (Gifted, from, mek, text = '⏳ _Processing..._') => {
+    try { return await Gifted.sendMessage(from, { text }, { quoted: mek }); }
+    catch(e) { return null; }
+};
+
+/**
+ * Edit a previously sent WhatsApp message.
+ * Falls back to: delete old → send new  (graceful degradation).
+ */
+const editMsg = async (Gifted, sentMsg, newText) => {
+    if (!sentMsg?.key) return;
+    // Attempt native WA edit (supported in newer Baileys builds)
+    try {
+        await Gifted.sendMessage(sentMsg.key.remoteJid, { text: newText, edit: sentMsg.key });
+        return;
+    } catch (e1) {
+        // Fallback: delete then re-send
+        try { await Gifted.sendMessage(sentMsg.key.remoteJid, { delete: sentMsg.key }); } catch(e){}
+        try { await Gifted.sendMessage(sentMsg.key.remoteJid, { text: newText }); }
+        catch(e2) { console.error('[AIGems] editMsg final fallback failed:', e2.message); }
+    }
+};
+
+/** Try to delete a message silently */
+const tryDelete = async (Gifted, msgKey) => {
+    try { await Gifted.sendMessage(msgKey.remoteJid, { delete: msgKey }); } catch(e){}
+};
+
+/** Send an image with auto-fallback to text URL if send fails */
+const sendImage = async (Gifted, from, url, caption, mek) => {
+    try {
+        await Gifted.sendMessage(from, { image: { url }, caption }, { quoted: mek });
+        return true;
+    } catch (e) {
+        await Gifted.sendMessage(from, { text: `🎨 Image URL: ${url}\n\n${caption}` }, { quoted: mek });
+        return false;
+    }
+};
+
+// Helper: resolve chat JID safely
+const jid = (m) =>
+    m?.chat || m?.from || m?.jid || m?.key?.remoteJid || m?.sender || '';
+
+// ==============================================================================
+// 12. GEM COMMANDS  — .gem
 // ==============================================================================
 if (typeof commandRegister === 'function') {
 
-// ─────────────────────────────────────────
-// .gem — Persona Management
-// ─────────────────────────────────────────
 commandRegister({
-    pattern:  'gem',
-    cmdname:  'gem',
-    alias:    ['gems','persona'],
-    type:     'ai',
-    category: 'AI',
-    desc:     'Manage AI personas (gems). Usage: .gem [create|list|delete|gen|use|analyze]',
-    react:    '💎',
+    pattern : 'gem',
+    cmdname : 'gem',
+    alias   : ['gems', 'persona', 'gemset'],
+    type    : 'ai',
+    category: 'ai',
+    desc    : 'AI persona system. gem help for all sub-commands.',
+    react   : '💎',
     filename: __filename
 }, async (arg1, ...args) => {
-    const { m, sock } = resolveContext(arg1, args);
-    const rawId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
-    const chatId = typeof rawId === 'string' ? rawId : null;
-    if (!chatId) return;
+    const { m, sock: Gifted } = resolveCtx(arg1, args);
+    const conText = arg1?.body !== undefined ? arg1 : args.find(a => a?.isSuperUser !== undefined) || {};
+    if (!conText.isSuperUser && !arg1.isSuperUser) return safeReply(Gifted, m, '❌ Owner only command.');
 
-    const body   = m.body || m.text || '';
-    const parts  = body.trim().split(/\s+/);
-    const cmd    = (parts[1]||'').toLowerCase();
-    const rest   = parts.slice(2).join(' ');
-    const send   = (hdr, txt) => sendFmt(sock, chatId, m, hdr, txt);
+    const q    = (conText.q || arg1.q || '').trim();
+    const raw  = q.split(/\s+/);
+    const cmd  = raw[0]?.toLowerCase() || 'help';
+    const from = jid(m);
 
-    // ── create ──
+    // ── CREATE ──────────────────────────────────────────────────────────────
     if (cmd === 'create') {
-        const subparts = rest.split(' ');
-        const gemName  = subparts[0];
-        const content  = subparts.slice(1).join(' ');
-        if (!gemName || !content) return send('💎 Usage', '.gem create <name> <persona prompt>');
-        try { DB.gemSave(gemName, content); } catch(e) { return send('❌ Error', e.message); }
-        return send('✅ Gem Saved', `*Name:* ${gemName}\n*Length:* ${content.length} chars`);
+        if (raw.length < 3) return safeReply(Gifted, m,
+            '📝 Usage: `.gem create <name> <persona prompt>`\n\nExample:\n`.gem create savage A savage, no-filter rapper who roasts everything`');
+        const name    = raw[1].toLowerCase();
+        const content = raw.slice(2).join(' ');
+        Gems.save(name, content)
+            ? safeReply(Gifted, m, `💎 *Gem Saved!*\n\n*Name:* \`${name}\`\n*Preview:* _${content.slice(0,100)}..._`)
+            : safeReply(Gifted, m, '❌ Database error — gem not saved.');
+        return;
     }
 
-    // ── list ──
-    if (cmd === 'list') {
-        const gems = DB.gemList();
-        if (!gems.length) return send('📚 Gem Collection', 'Empty. Use .gem create to add one.');
-        return send(`📚 Gems (${gems.length})`, gems.map(g=>`💎 ${g}`).join('\n'));
-    }
-
-    // ── delete ──
-    if (cmd === 'delete' || cmd === 'del') {
-        if (!rest) return send('Usage', '.gem delete <name>');
-        const ok = DB.gemDel(rest.trim());
-        return send(ok ? '🗑️ Deleted' : '❌ Not Found', `*${rest.trim()}*`);
-    }
-
-    // ── gen (AI-generate a persona) ──
+    // ── GEN  (AI-write the persona) ──────────────────────────────────────────
     if (cmd === 'gen') {
-        if (!rest) return send('Usage', '.gem gen <topic>');
-        await sock.sendMessage(chatId, { text:'🔮 *Forging persona...*' }, buildSafeQuote(m));
-        const content = await callAI(
-            `Create a System Prompt for an AI to act as: ${rest}. Return ONLY the prompt text, no explanations.`
+        const topic = raw.slice(1).join(' ');
+        if (!topic) return safeReply(Gifted, m, '📝 Usage: `.gem gen <topic>`\nExample: `.gem gen passive-aggressive ex`');
+        const proc = await sendProcessing(Gifted, from, m, `🔮 _Forging persona: "${topic}"…_`);
+        const { text, err } = await askAI(
+            `Create a highly detailed System Prompt for an AI to convincingly act as: ${topic}.\n` +
+            `Include: personality traits, speaking style, vocabulary, emoji usage, how they react.\n` +
+            `Return ONLY the raw system prompt text, no preamble or quotes.`
         );
-        if (content.startsWith('⚠️')) return send('❌ Error', content);
-        const gemName = rest.split(' ')[0].toLowerCase() + '_ai';
-        DB.gemSave(gemName, content);
-        return send('✨ Gem Generated', `*Name:* ${gemName}\n\n${content.slice(0,120)}...`);
+        if (err) return editMsg(Gifted, proc, `❌ ${text}`);
+        const name = raw[1]?.toLowerCase().slice(0,12) + '_gem';
+        Gems.save(name, text);
+        await editMsg(Gifted, proc,
+            `✨ *Gem Generated!*\n\n*Name:* \`${name}\`\n*Preview:* _${text.slice(0,120)}..._\n\n_Use_ \`.gem use ${name}\` _to activate_`);
+        return;
     }
 
-    // ── use (set DM gem) ──
-    if (cmd === 'use') {
-        if (!rest) return send('Usage', '.gem use <name>');
-        const content = DB.gemGet(rest.trim());
-        if (!content) return send('❌ Not Found', `Gem "${rest.trim()}" does not exist.`);
-        STATE.dmGem = content;
-        return send('✅ DM Gem Active', `Using *${rest.trim()}* for auto-replies.`);
-    }
-
-    // ── analyze (clone from quoted msg) ──
+    // ── ANALYZE  (clone persona from replied message) ────────────────────────
     if (cmd === 'analyze') {
-        const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-        const txt    = quoted?.conversation || quoted?.extendedTextMessage?.text;
-        if (!txt) return send('Usage', 'Reply to a message, then use .gem analyze');
-        await sock.sendMessage(chatId, { text:'🕵️ *Analyzing style...*' }, buildSafeQuote(m));
-        const content = await callAI(
-            `Analyze this message and create a System Prompt to mimic the author's style:\n\n"${txt}"\n\nReturn ONLY the prompt.`
+        const replied = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        if (!replied) return safeReply(Gifted, m, '📝 Reply to someone\'s message, then run `.gem analyze`');
+        const txt  = replied.conversation || replied.extendedTextMessage?.text || '[no text]';
+        const proc = await sendProcessing(Gifted, from, m, '🕵️ _Analyzing personality…_');
+        const { text, err } = await askAI(
+            `Analyze this WhatsApp message and create a System Prompt to clone this person's style:\n"${txt}"\n` +
+            `Focus on tone, vocabulary, emoji use, sentence structure, attitude.\n` +
+            `Return ONLY the system prompt.`
         );
-        if (content.startsWith('⚠️')) return send('❌ Error', content);
-        const gemName = `mimic_${Date.now().toString(36)}`;
-        DB.gemSave(gemName, content);
-        return send('🧬 Clone Created', `*Name:* ${gemName}\n\n${content.slice(0,120)}...`);
+        if (err) return editMsg(Gifted, proc, `❌ ${text}`);
+        const name = `mimic_${Date.now().toString(36)}`;
+        Gems.save(name, text);
+        await editMsg(Gifted, proc,
+            `🧬 *Clone Created!*\n\n*Name:* \`${name}\`\n*Preview:* _${text.slice(0,120)}..._\n\n_Activate with_ \`.gem use ${name}\``);
+        return;
     }
 
-    // ── help ──
-    return send('💎 Gem System', [
-        '.gem create <name> <prompt> — save a persona',
-        '.gem list               — see all gems',
-        '.gem delete <name>      — remove a gem',
-        '.gem gen <topic>        — AI-generate a persona',
-        '.gem use <name>         — set active DM persona',
-        '.gem analyze            — clone style from quoted msg'
-    ].join('\n'));
+    // ── LEARN  (deep style extraction) ──────────────────────────────────────
+    if (cmd === 'learn') {
+        const replied = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        if (!replied) return safeReply(Gifted, m, '📝 Reply to the target\'s message, then run `.gem learn`');
+        const sample = replied.conversation || replied.extendedTextMessage?.text || '[no text]';
+        const proc   = await sendProcessing(Gifted, from, m, '🧠 _Deep-studying writing style…_');
+        const { text, err } = await askAI(
+            `Expert linguistic profiler task:\n` +
+            `Analyze this writing sample and create a HIGHLY DETAILED system prompt to clone this person:\n\n` +
+            `"${sample}"\n\n` +
+            `Extract: tone, vocabulary, slang, emoji patterns, sentence length, punctuation habits, emotional style.\n` +
+            `Return ONLY the comprehensive system prompt — no headers, no intro.`
+        );
+        if (err) return editMsg(Gifted, proc, `❌ ${text}`);
+        const name = `clone_${Date.now().toString(36)}`;
+        Gems.save(name, text);
+        await editMsg(Gifted, proc,
+            `🧬 *Deep Clone Created!*\n\n*Name:* \`${name}\`\n*Based on:* style-extracted sample\n*Preview:* _${text.slice(0,100)}..._\n\n_Activate with_ \`.gem use ${name}\``);
+        return;
+    }
+
+    // ── DELETE ───────────────────────────────────────────────────────────────
+    if (cmd === 'delete' || cmd === 'del') {
+        if (!raw[1]) return safeReply(Gifted, m, '📝 Usage: `.gem delete <name>`');
+        Gems.del(raw[1])
+            ? safeReply(Gifted, m, `🗑️ Gem *${raw[1]}* deleted.`)
+            : safeReply(Gifted, m, `❌ Gem \`${raw[1]}\` not found.`);
+        return;
+    }
+
+    // ── LIST ─────────────────────────────────────────────────────────────────
+    if (cmd === 'list') {
+        const list = Gems.list();
+        if (!list.length) return safeReply(Gifted, m,
+            '📚 No gems yet.\nUse `.gem create <name> <prompt>` or `.gem gen <topic>` to make one.');
+        safeReply(Gifted, m,
+            `📚 *Gem Collection (${list.length})*\n\n` +
+            list.map((g,i) => `${i+1}. 💎 \`${g}\``).join('\n') +
+            '\n\n_Use_ `.gem use <name>` _to activate for DM auto-reply_');
+        return;
+    }
+
+    // ── USE ──────────────────────────────────────────────────────────────────
+    if (cmd === 'use') {
+        if (!raw[1]) return safeReply(Gifted, m, '📝 Usage: `.gem use <name>`');
+        const content = Gems.get(raw[1]);
+        if (!content) return safeReply(Gifted, m, `❌ Gem \`${raw[1]}\` not found. Run \`.gem list\` to see all.`);
+        State.dmGem = content;
+        safeReply(Gifted, m, `✅ *DM Persona Set*\n\nGem: *${raw[1]}*\nActive for DM auto-replies.\n_Enable with_ \`.gai dm on\``);
+        return;
+    }
+
+    // ── VIEW ─────────────────────────────────────────────────────────────────
+    if (cmd === 'view') {
+        if (!raw[1]) return safeReply(Gifted, m, '📝 Usage: `.gem view <name>`');
+        const content = Gems.get(raw[1]);
+        if (!content) return safeReply(Gifted, m, `❌ Gem \`${raw[1]}\` not found.`);
+        safeReply(Gifted, m, `💎 *${raw[1].toUpperCase()}*\n\n${content}`);
+        return;
+    }
+
+    // ── REMIX  (AI-tweak existing gem) ───────────────────────────────────────
+    if (cmd === 'remix') {
+        if (!raw[1] || !raw[2]) return safeReply(Gifted, m, '📝 Usage: `.gem remix <name> <tweak instruction>`');
+        const base = Gems.get(raw[1]);
+        if (!base) return safeReply(Gifted, m, `❌ Gem \`${raw[1]}\` not found.`);
+        const instruction = raw.slice(2).join(' ');
+        const proc = await sendProcessing(Gifted, from, m, `🔀 _Remixing gem "${raw[1]}"…_`);
+        const { text, err } = await askAI(
+            `Take this system prompt and modify it according to the instruction.\n` +
+            `Return ONLY the modified system prompt, no explanation.\n\n` +
+            `Original:\n${base}\n\n` +
+            `Modification: ${instruction}`
+        );
+        if (err) return editMsg(Gifted, proc, `❌ ${text}`);
+        const newName = `${raw[1]}_remix`;
+        Gems.save(newName, text);
+        await editMsg(Gifted, proc,
+            `🔀 *Gem Remixed!*\n\nOriginal: \`${raw[1]}\`\nNew: \`${newName}\`\n*Tweak applied:* _${instruction}_`);
+        return;
+    }
+
+    // ── HELP ─────────────────────────────────────────────────────────────────
+    safeReply(Gifted, m,
+        `💎 *GEM SYSTEM — Persona Manager*\n\n` +
+        `*Create / Edit:*\n` +
+        `• \`.gem create <name> <prompt>\` — Save custom persona\n` +
+        `• \`.gem gen <topic>\` — AI auto-generates persona\n` +
+        `• \`.gem analyze\` — Clone style from replied msg\n` +
+        `• \`.gem learn\` — Deep style extraction\n` +
+        `• \`.gem remix <name> <tweak>\` — Modify existing gem\n\n` +
+        `*Manage:*\n` +
+        `• \`.gem list\` — Show all gems\n` +
+        `• \`.gem view <name>\` — Read gem content\n` +
+        `• \`.gem delete <name>\` — Remove gem\n` +
+        `• \`.gem use <name>\` — Set active DM persona\n\n` +
+        `💡 _Combine with_ \`.gai dm on\` _for auto-replies_`);
 });
 
-// ─────────────────────────────────────────
-// .gai — AI Control Centre
-// ─────────────────────────────────────────
+// ==============================================================================
+// 13. GAI — AI CONTROL  .gai
+// ==============================================================================
 commandRegister({
-    pattern:  'gai',
-    cmdname:  'gai',
-    alias:    ['ai','chatai','aichat'],
-    type:     'ai',
-    category: 'AI',
-    desc:     'AI control: one-shot queries, DM/chat/stalk auto-reply, status.',
-    react:    '🧠',
+    pattern : 'gai',
+    cmdname : 'gai',
+    alias   : ['ai', 'ask', 'brain', 'gask'],
+    type    : 'ai',
+    category: 'ai',
+    desc    : 'AI assistant & auto-reply control. .gai help for all modes.',
+    react   : '🧠',
     filename: __filename
 }, async (arg1, ...args) => {
-    const { m, sock } = resolveContext(arg1, args);
-    const rawId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
-    const chatId = typeof rawId === 'string' ? rawId : null;
-    if (!chatId) return;
+    const { m, sock: Gifted } = resolveCtx(arg1, args);
+    const conText = arg1?.isSuperUser !== undefined ? arg1 : args.find(a => a?.isSuperUser !== undefined) || {};
+    if (!conText.isSuperUser && !arg1.isSuperUser) return safeReply(Gifted, m, '❌ Owner only command.');
 
-    const body   = m.body || m.text || '';
-    const parts  = body.trim().split(/\s+/);
-    const cmd    = (parts[1]||'').toLowerCase();
-    const rest   = parts.slice(2).join(' ');
-    const send   = (hdr, txt) => sendFmt(sock, chatId, m, hdr, txt);
+    const q    = (conText.q || arg1.q || '').trim();
+    const raw  = q.split(/\s+/);
+    const cmd  = raw[0]?.toLowerCase() || '';
+    const from = jid(m);
 
-    // ── dm mode ──
+    // ── DM AUTO-PILOT ────────────────────────────────────────────────────────
     if (cmd === 'dm') {
-        const action = (rest||'status').toLowerCase();
-        if (action === 'on')  STATE.dmMode = true;
-        if (action === 'off') STATE.dmMode = false;
-        return send('📨 DM Auto-Pilot', `Status: *${STATE.dmMode ? 'ON ✅' : 'OFF ❌'}*`);
+        const sub = raw[1]?.toLowerCase();
+        if (sub === 'on')  { State.dmActive = true;  return safeReply(Gifted, m, `📨 *DM Auto-Pilot:* ✅ ON\nGem: ${State.dmGem ? 'Custom' : 'Default'}`); }
+        if (sub === 'off') { State.dmActive = false; return safeReply(Gifted, m, '📨 *DM Auto-Pilot:* ❌ OFF'); }
+        safeReply(Gifted, m, `📨 *DM Auto-Pilot:* ${State.dmActive ? '✅ ON' : '❌ OFF'}\n_Use_ \`.gai dm on/off\` _to toggle_`);
+        return;
     }
 
-    // ── chat mode (auto-reply all in this chat) ──
+    // ── TARGET WHOLE CHAT ─────────────────────────────────────────────────────
     if (cmd === 'chat') {
-        const gemName = rest || 'default';
-        const content = DB.gemGet(gemName) || STATE.dmGem || DEFAULT_PERSONA;
-        STATE.activeChats[chatId] = { gem:content, history:[] };
-        return send('⚔️ Chat Agent Active', `Gem: *${gemName}*\nI will reply to everyone here.`);
+        const gemName = raw[1] || 'default';
+        const gemText = (gemName !== 'default' ? Gems.get(gemName) : null) || State.DEFAULT_PERSONA;
+        State.activeChats.set(from, { gem: gemText, history: [], gemName });
+        safeReply(Gifted, m, `⚔️ *Chat AI Active*\n\nGem: *${gemName}*\nReplying to everyone here now.`);
+        return;
     }
 
-    // ── bot mode (reply to specific user in current chat) ──
-    if (cmd === 'bot') {
-        const subParts = rest.trim().split(/\s+/);
-        const targetNum = subParts[0]?.replace(/[^0-9]/g,'');
-        if (!targetNum) return send('Usage', '.gai bot <number> [gem]');
-        const gemName = subParts[1] || 'default';
-        const content = DB.gemGet(gemName) || DEFAULT_PERSONA;
-        const targetId = targetNum + '@s.whatsapp.net';
-        STATE.activeTargets[targetId] = { gem:content, history:[] };
-        return send('🤖 Target Locked', `Number: *${targetNum}*\nGem: *${gemName}*`);
+    // ── TARGET SPECIFIC USER  ─────────────────────────────────────────────────
+    if (cmd === 'bot' || cmd === 'target') {
+        if (!raw[1]) return safeReply(Gifted, m, '📝 Usage: `.gai target <number> [gem]`');
+        const targetJid = raw[1].replace(/[^0-9]/g,'') + '@s.whatsapp.net';
+        const gemName   = raw[2] || 'default';
+        const gemText   = (gemName !== 'default' ? Gems.get(gemName) : null) || State.DEFAULT_PERSONA;
+        State.activeTargets.set(targetJid, { gem: gemText, history: [], chatId: from, gemName });
+        safeReply(Gifted, m, `🤖 *Target Locked*\n\nUser: @${raw[1].replace(/[^0-9]/g,'')}\nGem: *${gemName}*\nActive in this chat.`);
+        return;
     }
 
-    // ── stalk mode (global — reply to user anywhere) ──
+    // ── GLOBAL STALKER ────────────────────────────────────────────────────────
     if (cmd === 'stalk') {
-        const subParts = rest.trim().split(/\s+/);
-        const targetNum = subParts[0]?.replace(/[^0-9]/g,'');
-        if (!targetNum) return send('Usage', '.gai stalk <number> [gem]');
-        const gemName = subParts[1] || 'default';
-        const content = DB.gemGet(gemName) || DEFAULT_PERSONA;
-        const targetId = targetNum + '@s.whatsapp.net';
-        STATE.stalkTargets[targetId] = { gem:content, history:[] };
-        return send('🌍 Global Stalk Active', `Number: *${targetNum}*\nGem: *${gemName}*\nI will reply to them *everywhere*.`);
+        if (!raw[1]) return safeReply(Gifted, m, '📝 Usage: `.gai stalk <number> [gem]`');
+        const targetJid = raw[1].replace(/[^0-9]/g,'') + '@s.whatsapp.net';
+        const gemName   = raw[2] || 'default';
+        const gemText   = (gemName !== 'default' ? Gems.get(gemName) : null) || State.DEFAULT_PERSONA;
+        State.globalStalkers.set(targetJid, { gem: gemText, history: [], gemName });
+        safeReply(Gifted, m, `🌍 *Global Stalker Active*\n\nTarget: @${raw[1].replace(/[^0-9]/g,'')}\nGem: *${gemName}*\nI'll reply to them everywhere.`);
+        return;
     }
 
-    // ── stop ──
+    // ── STOP ─────────────────────────────────────────────────────────────────
     if (cmd === 'stop') {
-        if ((rest||'').toLowerCase() === 'all') {
-            STATE.dmMode = false;
-            Object.keys(STATE.activeChats).forEach(k=>delete STATE.activeChats[k]);
-            Object.keys(STATE.activeTargets).forEach(k=>delete STATE.activeTargets[k]);
-            Object.keys(STATE.stalkTargets).forEach(k=>delete STATE.stalkTargets[k]);
-            return send('☢️ KILL SWITCH', 'ALL AI systems shut down.\n• DM Mode: OFF\n• Active Chats: 0\n• Targets: 0\n• Stalkers: 0');
+        if (raw[1]?.toLowerCase() === 'all') {
+            State.dmActive = false;
+            State.activeChats.clear();
+            State.activeTargets.clear();
+            State.globalStalkers.clear();
+            safeReply(Gifted, m,
+                '☢️ *ALL AI SYSTEMS SHUT DOWN*\n\n• DM Mode: OFF\n• Active Chats: 0\n• Targets: 0\n• Stalkers: 0');
+        } else {
+            const had = State.activeChats.has(from);
+            State.activeChats.delete(from);
+            safeReply(Gifted, m, `🛑 AI stopped in this chat.\n${had ? 'Session cleared.' : 'No session was active here.'}\n\n_Stop everything:_ \`.gai stop all\``);
         }
-        const removed = [];
-        if (STATE.activeChats[chatId]) { delete STATE.activeChats[chatId]; removed.push('Chat Agent'); }
-        return send('🛑 AI Stopped', removed.length ? removed.join(', ') : 'No active session here.\n\nUse `.gai stop all` to stop everything.');
+        return;
     }
 
-    // ── wipe history ──
+    // ── WIPE HISTORY ─────────────────────────────────────────────────────────
     if (cmd === 'wipe') {
-        if (STATE.activeChats[chatId]) STATE.activeChats[chatId].history = [];
-        return send('🧹 Memory Wiped', 'Chat history cleared.');
+        if (State.activeChats.has(from)) {
+            State.activeChats.get(from).history = [];
+            safeReply(Gifted, m, '🧠 _Memory wiped — fresh start!_');
+        } else {
+            safeReply(Gifted, m, 'ℹ️ No active AI session in this chat.');
+        }
+        return;
     }
 
-    // ── status ──
+    // ── STATUS ───────────────────────────────────────────────────────────────
     if (cmd === 'status') {
-        const chats   = Object.keys(STATE.activeChats).length;
-        const targets = Object.keys(STATE.activeTargets).length;
-        const stalks  = Object.keys(STATE.stalkTargets).length;
-        const lines   = [
-            `📨 DM Mode: ${STATE.dmMode ? '✅ ON' : '❌ OFF'}`,
-            `⚔️ Active Chats: ${chats}`,
-            `🤖 Local Targets: ${targets}`,
-            `🌍 Global Stalkers: ${stalks}`,
-            `🔧 Active Gem: ${STATE.dmGem ? 'Custom' : 'Default'}`,
-            `📊 AI Requests: ${STATE.apiStats.ai}`,
-            `🖼️ Image Requests: ${STATE.apiStats.image}`,
-            `❌ Errors: ${STATE.apiStats.errors}`
-        ];
-        return send('📊 AI System Status', lines.join('\n'));
+        const s   = Monitor.stats();
+        const cbS = Circuit.isOpen()
+            ? `🔴 TRIPPED (${Circuit.fails}/${Circuit.threshold})`
+            : `🟢 OK (${Circuit.fails}/${Circuit.threshold})`;
+        let msg =
+            `📊 *AI SYSTEM STATUS*\n` +
+            `━━━━━━━━━━━━━━━━━━━━\n` +
+            `📨 DM Mode: ${State.dmActive ? '✅ ON' : '❌ OFF'}\n` +
+            `⚔️ Active Chats: ${State.activeChats.size}\n` +
+            `🤖 Local Targets: ${State.activeTargets.size}\n` +
+            `🌍 Global Stalkers: ${State.globalStalkers.size}\n\n` +
+            `📈 *API Load:*\n` +
+            `• Requests/min: ${s.rpm}/${Config.MAX_RPM}\n` +
+            `• Requests/hr: ${s.rph}/${Config.MAX_RPH}\n` +
+            `• Daily AI: ${s.ai} | Imgs: ${s.img} | Errors: ${s.err}\n` +
+            `🔌 Circuit: ${cbS}\n`;
+        if (State.activeChats.size) {
+            msg += `\n*Active Sessions:*\n`;
+            State.activeChats.forEach((d, cid) => {
+                msg += `• ${cid.split('@')[0]}: ${d.history.length} msgs (${d.gemName})\n`;
+            });
+        }
+        safeReply(Gifted, m, msg);
+        return;
     }
 
-    // ── summary ──
+    // ── SUMMARY ───────────────────────────────────────────────────────────────
     if (cmd === 'summary') {
-        const limit = parseInt(rest) || 50;
-        await sock.sendMessage(chatId, { text:`📝 *Summarizing last ${limit} messages...*` }, buildSafeQuote(m));
-        return send('⚠️ Summary', 'Chat history scraping is limited in WhatsApp API.\nAsk me to summarize a pasted conversation instead.');
+        const sess = State.activeChats.get(from);
+        if (!sess?.history?.length) return safeReply(Gifted, m,
+            'ℹ️ No history here.\nStart a session with `.gai chat` first.');
+        const proc = await sendProcessing(Gifted, from, m, '📝 _Summarizing conversation…_');
+        const { text, err } = await askAI(
+            `Summarize this WhatsApp conversation in clear bullet points.\n` +
+            `Highlight key topics, decisions, jokes, and any drama.\n\n` +
+            sess.history.join('\n')
+        );
+        await editMsg(Gifted, proc, err ? `❌ ${text}` : `📝 *Chat Summary*\n\n${text}`);
+        return;
     }
 
-    // ── one-shot AI query ──
-    const query = parts.slice(1).join(' ');
-    if (!query) return send('🧠 AI Help', [
-        '.gai <question>   — one-shot AI query',
-        '.gai dm on/off    — DM auto-pilot',
-        '.gai chat [gem]   — auto-reply this chat',
-        '.gai bot <num> [gem] — target specific user',
-        '.gai stalk <num> [gem] — global auto-reply',
-        '.gai stop [all]   — stop AI modes',
-        '.gai wipe         — clear history',
-        '.gai status       — view system state'
-    ].join('\n'));
+    // ── HELP ──────────────────────────────────────────────────────────────────
+    if (cmd === 'help') {
+        safeReply(Gifted, m,
+            `🧠 *GAI — AI CONTROL*\n\n` +
+            `*🔍 Quick Ask:*\n` +
+            `• \`.gai <question>\` — One-shot answer\n\n` +
+            `*🤖 Auto-Reply Modes:*\n` +
+            `• \`.gai dm on/off\` — DM auto-pilot\n` +
+            `• \`.gai chat [gem]\` — Reply to whole chat\n` +
+            `• \`.gai target <num> [gem]\` — Lock specific user\n` +
+            `• \`.gai stalk <num> [gem]\` — Global stalker\n\n` +
+            `*🛠️ Control:*\n` +
+            `• \`.gai stop\` — Stop current chat\n` +
+            `• \`.gai stop all\` — Kill everything\n` +
+            `• \`.gai wipe\` — Clear chat memory\n` +
+            `• \`.gai summary\` — Summarize chat\n` +
+            `• \`.gai status\` — System overview`);
+        return;
+    }
 
-    await sock.sendMessage(chatId, { text:'🧠 *Thinking...*' }, buildSafeQuote(m));
+    // ── ONE-SHOT QUICK ASK ────────────────────────────────────────────────────
+    if (!q) return safeReply(Gifted, m, '📝 Usage: `.gai <question>`\n_Or_ `.gai help` _for all modes._');
 
-    // Check for quoted image
-    const imageUrls = [];
-    const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-    if (quoted?.imageMessage) {
+    let imageUrls = [];
+    const replied = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+
+    // Handle vision — quoted image
+    if (replied?.imageMessage) {
+        const proc2 = await sendProcessing(Gifted, from, m, '👁️ _Analysing image…_');
         try {
-            const tmp = path.join(os.tmpdir(), `gai_img_${Date.now()}.jpg`);
-            if (sock.downloadAndSaveMediaMessage) {
-                await sock.downloadAndSaveMediaMessage(quoted.imageMessage, tmp.replace('.jpg',''));
-                if (fs.existsSync(tmp)) {
-                    const url = await uploadToImgBB(tmp);
-                    if (url) imageUrls.push(url);
-                    fs.unlink(tmp, ()=>{});
-                }
+            const tmpPath = await Gifted.downloadAndSaveMediaMessage(replied.imageMessage, `tmp_gai_${Date.now()}`);
+            if (tmpPath) {
+                const url = await uploadImgBB(tmpPath);
+                if (url) imageUrls.push(url);
+                try { fs.unlinkSync(tmpPath); } catch(e){}
             }
-        } catch(_) {}
+        } catch(e) { console.error('[AIGems] Vision download:', e.message); }
+        await tryDelete(Gifted, proc2.key);
     }
 
-    const response = await callAI(query, imageUrls);
-    await sock.sendMessage(chatId, { text: response }, buildSafeQuote(m));
+    const proc = await sendProcessing(Gifted, from, m, '🧠 _Thinking…_');
+
+    let finalPrompt = q;
+    const ctx = replied?.conversation || replied?.extendedTextMessage?.text;
+    if (ctx) finalPrompt = `Context: "${ctx}"\n\nQuestion: ${q}`;
+
+    const { text, err } = await askAI(finalPrompt, imageUrls);
+    await editMsg(Gifted, proc, err ? `❌ ${text}` : text);
 });
 
-// ─────────────────────────────────────────
-// .img — Image Generation
-// ─────────────────────────────────────────
+// ==============================================================================
+// 14. IMAGE GENERATION  .img
+// ==============================================================================
 commandRegister({
-    pattern:  'img',
-    cmdname:  'img',
-    alias:    ['imagine','genimg','aiimg'],
-    type:     'ai',
-    category: 'AI',
-    desc:     'AI Image Generation via Infip. Usage: .img [gen|surprise|chaos|models|config|enhance|random|cache]',
-    react:    '🎨',
+    pattern : 'img',
+    cmdname : 'img',
+    alias   : ['imagine', 'genimg', 'dalle', 'drawai'],
+    type    : 'ai',
+    category: 'ai',
+    desc    : 'AI image generation with Infip. .img help for all sub-commands.',
+    react   : '🎨',
     filename: __filename
 }, async (arg1, ...args) => {
-    const { m, sock } = resolveContext(arg1, args);
-    const rawId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
-    const chatId = typeof rawId === 'string' ? rawId : null;
-    if (!chatId) return;
+    const { m, sock: Gifted } = resolveCtx(arg1, args);
+    const conText = arg1?.isSuperUser !== undefined ? arg1 : args.find(a => a?.isSuperUser !== undefined) || {};
+    if (!conText.isSuperUser && !arg1.isSuperUser) return safeReply(Gifted, m, '❌ Owner only command.');
 
-    const body  = m.body || m.text || '';
-    const parts = body.trim().split(/\s+/);
-    const cmd   = (parts[1]||'help').toLowerCase();
-    const rest  = parts.slice(2).join(' ');
-    const send  = (hdr, txt) => sendFmt(sock, chatId, m, hdr, txt);
-    const opts  = buildSafeQuote(m);
+    const q    = (conText.q || arg1.q || '').trim();
+    const raw  = q.split(/\s+/);
+    const cmd  = raw[0]?.toLowerCase() || 'help';
+    const from = jid(m);
 
-    const sendImages = async (urls, caption) => {
-        for (const url of urls) {
-            await sock.sendMessage(chatId, { image: { url }, caption }, opts);
-        }
-    };
+    const knownCmds = ['gen','surprise','chaos','models','config','enhance','setup','random','cache','help'];
 
-    // ── gen ──
-    if (cmd === 'gen') {
-        if (!rest) return send('Usage', '.img gen <prompt>');
-        await sock.sendMessage(chatId, { text:'🎨 *Generating image...*' }, opts);
-        const urls = await generateImage(rest);
-        if (!urls.length) return send('❌ Failed', 'Image generation failed. Try again later.');
-        await sendImages(urls, `🎨 *AI Image*\n\n📝 ${rest}\n🤖 Model: ${CFG.IMG_MODEL}`);
+    // ── GENERATE ──────────────────────────────────────────────────────────────
+    if (cmd === 'gen' || (!knownCmds.includes(cmd) && q)) {
+        const prompt = cmd === 'gen' ? raw.slice(1).join(' ') : q;
+        if (!prompt.trim()) return safeReply(Gifted, m,
+            '📝 Usage: `.img gen <prompt>`\nExample: `.img gen a samurai cat in neon rain`');
+
+        const proc = await sendProcessing(Gifted, from, m, `🎨 _Generating: "${prompt.slice(0,50)}…"_`);
+        const urls = await generateImage(prompt);
+
+        if (!urls.length) return editMsg(Gifted, proc, '❌ Generation failed. Try `.img setup` or change model.');
+
+        await tryDelete(Gifted, proc.key);
+        await sendImage(Gifted, from, urls[0],
+            `🎨 *AI Generated*\n\n📝 *Prompt:* ${prompt}\n🤖 *Model:* ${Config.IMG_MODEL}`, m);
+        for (const u of urls.slice(1)) await sendImage(Gifted, from, u, '🎨 _Variation_', m);
         return;
     }
 
-    // ── surprise [topic] ──
+    // ── SURPRISE ──────────────────────────────────────────────────────────────
     if (cmd === 'surprise') {
-        const topic = rest ? `based on topic: "${rest}"` : 'completely random and creative';
-        await sock.sendMessage(chatId, { text:'🎲 *Dreaming up a concept...*' }, opts);
-        let genPrompt = await callAI(
-            `Generate a highly detailed, creative prompt for an AI image generator ${topic}. ` +
-            `Focus on visual descriptions, lighting, atmosphere, artistic style. Return ONLY the prompt.`
+        const topic = raw.slice(1).join(' ');
+        const hint  = topic ? ` themed around "${topic}"` : '';
+        const proc  = await sendProcessing(Gifted, from, m, `🎲 _Dreaming up something${hint}…_`);
+
+        const { text: dreamt, err } = await askAI(
+            `Generate a highly detailed, creative image generation prompt${hint}.\n` +
+            `Include visual details, lighting, atmosphere, and artistic style.\n` +
+            `Return ONLY the prompt text.`
         );
-        if (!genPrompt || genPrompt.startsWith('⚠️'))
-            genPrompt = 'A majestic phoenix made of crystal rising from a nebula, 8k, cinematic lighting';
-        await sock.sendMessage(chatId, { text:`✨ *Visualizing:*\n_${genPrompt.slice(0,80)}..._` }, opts);
-        const urls = await generateImage(genPrompt);
-        if (!urls.length) return send('❌ Failed', 'Could not generate surprise image.');
-        await sendImages(urls, `🎲 *Surprise Image*\n\n📝 ${genPrompt.slice(0,100)}...`);
+        if (err) return editMsg(Gifted, proc, `❌ ${dreamt}`);
+
+        await editMsg(Gifted, proc, `🎨 _Visualizing:_ "${dreamt.slice(0,80)}…"`);
+        const urls = await generateImage(dreamt);
+        if (!urls.length) return editMsg(Gifted, proc, '❌ Failed to generate. Try again.');
+
+        await tryDelete(Gifted, proc.key);
+        await sendImage(Gifted, from, urls[0], `🎲 *Surprise!*\n\n💭 _${dreamt.slice(0,200)}_`, m);
         return;
     }
 
-    // ── chaos (random everything) ──
+    // ── CHAOS ─────────────────────────────────────────────────────────────────
     if (cmd === 'chaos') {
-        const sizes   = ['1024x1024','1792x1024','1024x1792'];
-        const quals   = ['standard','hd'];
-        const styles  = ['vivid','natural'];
-        const freeMods= Object.keys(CFG.IMG_MODELS).filter(k=>CFG.IMG_MODELS[k].tier==='free');
-        CFG.IMG_SIZE    = sizes[Math.floor(Math.random()*sizes.length)];
-        CFG.IMG_QUALITY = quals[Math.floor(Math.random()*quals.length)];
-        CFG.IMG_STYLE   = styles[Math.floor(Math.random()*styles.length)];
-        CFG.IMG_MODEL   = freeMods[Math.floor(Math.random()*freeMods.length)];
+        const freeModels = Object.keys(Config.IMG_MODELS).filter(k => Config.IMG_MODELS[k].tier === 'free');
+        Config.IMG_MODEL   = freeModels[Math.floor(Math.random() * freeModels.length)];
+        Config.IMG_SIZE    = ['1024x1024','1792x1024','1024x1792'][Math.floor(Math.random()*3)];
+        Config.IMG_QUALITY = Math.random() > 0.5 ? 'hd' : 'standard';
+        Config.IMG_STYLE   = Math.random() > 0.5 ? 'vivid' : 'natural';
 
-        await sock.sendMessage(chatId, { text:'🌪️ *CHAOS MODE — Randomizing everything...*' }, opts);
-        const chaosAsk = [
-            'Generate a bizarre, surreal art prompt that defies logic. Highly detailed. Return ONLY the prompt.',
-            'Describe a completely absurd, mind-bending scene with impossible physics. Return ONLY the prompt.',
-            'Create a prompt for the most chaotic, unpredictable image imaginable. Return ONLY the prompt.'
-        ][Math.floor(Math.random()*3)];
+        const proc = await sendProcessing(Gifted, from, m,
+            `🌪️ *CHAOS MODE*\n_Model: ${Config.IMG_MODEL} | ${Config.IMG_SIZE}_\n_Conjuring madness…_`);
 
-        let genPrompt = await callAI(chaosAsk);
-        if (!genPrompt || genPrompt.startsWith('⚠️'))
-            genPrompt = 'Abstract chaos, melting clocks in cybernetic forest, neon rain, surreal';
+        const chaosQueries = [
+            'Generate a bizarre surreal art prompt that defies logic. Return ONLY the prompt.',
+            'Create an absurd image description with impossible physics. Return ONLY the prompt.',
+            'Describe a completely nonsensical scene breaking all natural laws. Return ONLY the prompt.',
+            'Make a prompt for the most chaotic, impossible image imaginable. Return ONLY the prompt.'
+        ];
+        const { text: chaosPrompt, err } = await askAI(
+            chaosQueries[Math.floor(Math.random()*chaosQueries.length)]);
+        const fp = err ? 'Abstract chaos, melting clocks in a cybernetic forest, neon rain, 8k' : chaosPrompt;
 
-        const urls = await generateImage(genPrompt, {
-            model: CFG.IMG_MODEL, size: CFG.IMG_SIZE,
-            quality: CFG.IMG_QUALITY, style: CFG.IMG_STYLE
-        });
-        if (!urls.length) return send('❌ Chaos Failed', 'Try again.');
-        await sendImages(urls,
-            `🌪️ *CHAOS IMAGE*\n\n📝 ${genPrompt.slice(0,100)}...\n🤖 ${CFG.IMG_MODEL} | ${CFG.IMG_SIZE} | ${CFG.IMG_QUALITY} | ${CFG.IMG_STYLE}`
-        );
+        const urls = await generateImage(fp);
+        if (!urls.length) return editMsg(Gifted, proc, '❌ Chaos could not be manifested. Retry.');
+
+        await tryDelete(Gifted, proc.key);
+        await sendImage(Gifted, from, urls[0],
+            `🌪️ *CHAOS GENERATION*\n\n💭 ${fp.slice(0,200)}\n\n⚙️ ${Config.IMG_MODEL} | ${Config.IMG_SIZE}`, m);
         return;
     }
 
-    // ── models ──
+    // ── MODELS ────────────────────────────────────────────────────────────────
     if (cmd === 'models') {
-        const lines = Object.entries(CFG.IMG_MODELS).map(([id, info]) => {
-            const tier  = info.tier === 'pro' ? '👑' : '🆓';
-            const async_= info.async ? '⚡' : '';
-            return `${tier}${async_} \`${id}\` — ${info.desc}`;
-        });
-        return send('🎨 Available Models', lines.join('\n') + '\n\n👑=Pro 🆓=Free ⚡=Async');
+        const list = Object.entries(Config.IMG_MODELS)
+            .map(([id,info]) => `${info.tier==='pro'?'👑':'🆓'} \`${id}\` — ${info.desc}`)
+            .join('\n');
+        safeReply(Gifted, m,
+            `📋 *Available Models*\n\n${list}\n\n👑 Pro | 🆓 Free\n\n` +
+            `*Current:* \`${Config.IMG_MODEL}\`\n_Use_ \`.img config <model>\` _to change_`);
+        return;
     }
 
-    // ── config ──
+    // ── CONFIG ────────────────────────────────────────────────────────────────
     if (cmd === 'config') {
-        if (!rest) {
-            return send('⚙️ Image Config',
-                `Model:   ${CFG.IMG_MODEL}\n` +
-                `Size:    ${CFG.IMG_SIZE}\n` +
-                `Count:   ${CFG.IMG_COUNT}\n` +
-                `Quality: ${CFG.IMG_QUALITY}\n` +
-                `Style:   ${CFG.IMG_STYLE}\n\n` +
-                `Usage: .img config <model> <size> <count> <quality> <style>`);
-        }
-        const cfgParts = rest.split(/\s+/);
-        if (cfgParts[0]) {
-            if (!CFG.IMG_MODELS[cfgParts[0]]) return send('❌ Error', `Model "${cfgParts[0]}" not found. Use .img models`);
-            CFG.IMG_MODEL = cfgParts[0];
-        }
-        if (cfgParts[1]) CFG.IMG_SIZE    = cfgParts[1];
-        if (cfgParts[2]) CFG.IMG_COUNT   = Math.min(parseInt(cfgParts[2])||1, 4);
-        if (cfgParts[3]) CFG.IMG_QUALITY = cfgParts[3];
-        if (cfgParts[4]) CFG.IMG_STYLE   = cfgParts[4];
-        return send('✅ Config Updated',
-            `Model: ${CFG.IMG_MODEL} | Size: ${CFG.IMG_SIZE}\nCount: ${CFG.IMG_COUNT} | Quality: ${CFG.IMG_QUALITY} | Style: ${CFG.IMG_STYLE}`);
+        if (!raw[1]) return safeReply(Gifted, m,
+            `⚙️ *Image Config*\n\n• Model: \`${Config.IMG_MODEL}\`\n• Size: \`${Config.IMG_SIZE}\`\n` +
+            `• Count: \`${Config.IMG_COUNT}\`\n• Quality: \`${Config.IMG_QUALITY}\`\n• Style: \`${Config.IMG_STYLE}\`\n\n` +
+            `📝 \`.img config <model> [size] [count] [quality] [style]\``);
+        const [model, size, count, quality, style] = raw.slice(1);
+        if (model && !Config.IMG_MODELS[model]) return safeReply(Gifted, m,
+            `❌ Model \`${model}\` not found.\nRun \`.img models\` to see all.`);
+        if (model)   Config.IMG_MODEL   = model;
+        if (size)    Config.IMG_SIZE    = size;
+        if (count)   Config.IMG_COUNT   = Math.min(parseInt(count)||1, 4);
+        if (quality) Config.IMG_QUALITY = quality;
+        if (style)   Config.IMG_STYLE   = style;
+        safeReply(Gifted, m,
+            `✅ *Config Updated*\n\n• Model: \`${Config.IMG_MODEL}\`\n• Size: \`${Config.IMG_SIZE}\`\n` +
+            `• Count: \`${Config.IMG_COUNT}\`\n• Quality: \`${Config.IMG_QUALITY}\`\n• Style: \`${Config.IMG_STYLE}\``);
+        return;
     }
 
-    // ── enhance (prompt improvement) ──
+    // ── ENHANCE PROMPT ────────────────────────────────────────────────────────
     if (cmd === 'enhance') {
-        if (!rest) return send('Usage', '.img enhance <prompt>');
-        await sock.sendMessage(chatId, { text:'🧠 *Enhancing prompt...*' }, opts);
-        const enhanced = await enhancePrompt(rest);
-        return send('✨ Enhanced Prompt', `*Original:*\n${rest}\n\n*Enhanced:*\n${enhanced}`);
+        const p = raw.slice(1).join(' ');
+        if (!p) return safeReply(Gifted, m, '📝 Usage: `.img enhance <prompt>`');
+        const proc = await sendProcessing(Gifted, from, m, '🧠 _Enhancing prompt…_');
+        const { text, err } = await askAI(
+            `Enhance this image generation prompt — make it more detailed and visually rich.\n` +
+            `Keep original intent. Return ONLY the enhanced prompt.\n\nOriginal: ${p}`
+        );
+        await editMsg(Gifted, proc, err ? `❌ ${text}` :
+            `✨ *Prompt Enhanced*\n\n*Original:*\n${p}\n\n*Enhanced:*\n${text}\n\n_Use_ \`.img gen\` _with the enhanced prompt_`);
+        return;
     }
 
-    // ── random (randomize settings only) ──
+    // ── RANDOM SETTINGS ───────────────────────────────────────────────────────
     if (cmd === 'random') {
-        const sizes   = ['1024x1024','1792x1024','1024x1792'];
-        const quals   = ['standard','hd'];
-        const styles  = ['vivid','natural'];
-        const freeMods= Object.keys(CFG.IMG_MODELS).filter(k=>CFG.IMG_MODELS[k].tier==='free');
-        CFG.IMG_SIZE    = sizes[Math.floor(Math.random()*sizes.length)];
-        CFG.IMG_QUALITY = quals[Math.floor(Math.random()*quals.length)];
-        CFG.IMG_STYLE   = styles[Math.floor(Math.random()*styles.length)];
-        CFG.IMG_MODEL   = freeMods[Math.floor(Math.random()*freeMods.length)];
-        return send('🎲 Random Settings Applied',
-            `Model: ${CFG.IMG_MODEL}\nSize: ${CFG.IMG_SIZE}\nQuality: ${CFG.IMG_QUALITY}\nStyle: ${CFG.IMG_STYLE}`);
+        const freeModels = Object.keys(Config.IMG_MODELS).filter(k => Config.IMG_MODELS[k].tier==='free');
+        Config.IMG_MODEL   = freeModels[Math.floor(Math.random()*freeModels.length)];
+        Config.IMG_SIZE    = ['1024x1024','1792x1024','1024x1792'][Math.floor(Math.random()*3)];
+        Config.IMG_QUALITY = Math.random()>0.5?'hd':'standard';
+        Config.IMG_STYLE   = Math.random()>0.5?'vivid':'natural';
+        safeReply(Gifted, m,
+            `🎲 *Settings Randomized!*\n\n• Model: \`${Config.IMG_MODEL}\`\n• Size: \`${Config.IMG_SIZE}\`\n` +
+            `• Quality: \`${Config.IMG_QUALITY}\`\n• Style: \`${Config.IMG_STYLE}\``);
+        return;
     }
 
-    // ── cache clear ──
-    if (cmd === 'cache') {
-        const count = Object.keys(STATE.imgCache).length;
-        Object.keys(STATE.imgCache).forEach(k => delete STATE.imgCache[k]);
-        return send('🗑️ Cache Cleared', `Removed ${count} cached entries.`);
-    }
-
-    // ── setup ──
+    // ── SETUP ─────────────────────────────────────────────────────────────────
     if (cmd === 'setup') {
-        await sock.sendMessage(chatId, { text:'🔧 *Setting up Image API...*' }, opts);
-        const ok = await ensureInfipKey();
-        return send(ok ? '✅ Setup Complete' : '❌ Setup Failed',
-            ok ? `API ready!\nKey: ${infipKey.slice(0,20)}...\nUse .img gen <prompt> to create images.`
-               : 'Could not connect to image API. Check your internet connection.');
+        const proc = await sendProcessing(Gifted, from, m, '🔧 _Validating Infip API…_');
+        infipValidated = false;
+        const ok = await validateInfip();
+        await editMsg(Gifted, proc, ok
+            ? `✅ *Image API Ready!*\n\nKey: \`${activeInfipKey.slice(0,20)}…\`\n_Use_ \`.img gen <prompt>\` _to generate_`
+            : `❌ *Setup Failed*\n\nCould not validate any API key.\nCheck internet connection.`);
+        return;
     }
 
-    // ── help ──
-    return send('🎨 Image Generation', [
-        '.img gen <prompt>       — generate image',
-        '.img surprise [topic]   — AI-dreamed random image',
-        '.img chaos              — random settings + random prompt',
-        '.img models             — list all available models',
-        '.img config [settings]  — configure generation settings',
-        '.img random             — randomize settings',
-        '.img enhance <prompt>   — AI-enhance your prompt',
-        '.img setup              — verify API connection',
-        '.img cache              — clear generation cache',
-        '',
-        `Current model: ${CFG.IMG_MODEL} | Size: ${CFG.IMG_SIZE}`
-    ].join('\n'));
+    // ── CACHE CLEAR ───────────────────────────────────────────────────────────
+    if (cmd === 'cache') {
+        imgCache.clear();
+        safeReply(Gifted, m, '🗑️ Image cache cleared.');
+        return;
+    }
+
+    // ── HELP ──────────────────────────────────────────────────────────────────
+    safeReply(Gifted, m,
+        `🎨 *IMAGE GENERATION*\n\n` +
+        `• \`.img gen <prompt>\` — Generate image\n` +
+        `• \`.img surprise [topic]\` — AI dreams up a pic\n` +
+        `• \`.img chaos\` — Random model + random prompt\n` +
+        `• \`.img enhance <prompt>\` — AI-improve your prompt\n` +
+        `• \`.img models\` — List all available models\n` +
+        `• \`.img config [model] [size] [n] [quality] [style]\` — Settings\n` +
+        `• \`.img random\` — Randomize current settings\n` +
+        `• \`.img setup\` — Re-validate API key\n` +
+        `• \`.img cache\` — Clear generation cache\n\n` +
+        `*Current:* \`${Config.IMG_MODEL}\` @ \`${Config.IMG_SIZE}\``);
 });
 
-// ─────────────────────────────────────────
-// .profile — Dynamic WhatsApp Profile
-// ─────────────────────────────────────────
+// ==============================================================================
+// 15. API MONITOR  .apimon
+// ==============================================================================
 commandRegister({
-    pattern:  'profile',
-    cmdname:  'profile',
-    alias:    ['dynprofile','aiprofile'],
-    type:     'ai',
-    category: 'AI',
-    desc:     'AI-driven dynamic profile updates. Usage: .profile [update|auto|name|bio|pfp|history|interval]',
-    react:    '🎭',
+    pattern : 'apimon',
+    cmdname : 'apimon',
+    alias   : ['apistat','apistatus','aihealth'],
+    type    : 'ai',
+    category: 'ai',
+    desc    : 'Monitor AI API usage, health, and circuit breaker.',
+    react   : '📊',
     filename: __filename
 }, async (arg1, ...args) => {
-    const { m, sock } = resolveContext(arg1, args);
-    const rawId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
-    const chatId = typeof rawId === 'string' ? rawId : null;
-    if (!chatId) return;
+    const { m, sock: Gifted } = resolveCtx(arg1, args);
+    const conText = arg1?.isSuperUser !== undefined ? arg1 : args.find(a => a?.isSuperUser !== undefined) || {};
+    if (!conText.isSuperUser && !arg1.isSuperUser) return safeReply(Gifted, m, '❌ Owner only.');
 
-    const body  = m.body || m.text || '';
-    const parts = body.trim().split(/\s+/);
-    const cmd   = (parts[1]||'help').toLowerCase();
-    const rest  = parts.slice(2).join(' ');
-    const send  = (hdr, txt) => sendFmt(sock, chatId, m, hdr, txt);
-    const opts  = buildSafeQuote(m);
+    const q   = (conText.q || arg1.q || '').trim();
+    const raw = q.split(/\s+/);
+    const cmd = raw[0]?.toLowerCase() || 'status';
 
-    // ── update (all at once) ──
-    if (cmd === 'update') {
-        await sock.sendMessage(chatId, { text:'🎭 *Updating profile...*\nGenerating AI content...' }, opts);
-        const [name, bio, pfpPath] = await Promise.all([
-            generateProfileName(),
-            generateProfileBio(),
-            generateProfilePFP()
-        ]);
-        const done = [];
-        if (name    && await updateWAName(sock, name))    done.push(`✅ Name: ${name}`);
-        if (bio     && await updateWABio(sock, bio))      done.push(`✅ Bio: ${bio}`);
-        if (pfpPath && await updateWAPFP(sock, pfpPath))  done.push('✅ Profile Picture updated');
-        return send(done.length ? '🎭 Profile Updated' : '❌ Update Failed',
-            done.length ? done.join('\n') : 'No updates could be applied.');
-    }
-
-    // ── auto on/off/status ──
-    if (cmd === 'auto') {
-        const action = (rest||'status').toLowerCase();
-        if (action === 'on') {
-            startProfileScheduler(sock);
-            return send('🤖 Auto Profile', `Enabled ✅\nUpdating every ${STATE.profileInterval/3600000}h.`);
-        }
-        if (action === 'off') {
-            stopProfileScheduler();
-            return send('🤖 Auto Profile', 'Disabled ❌');
-        }
-        const running = STATE.autoProfile;
-        return send('🤖 Auto Profile Status',
-            `Status: ${running ? '✅ RUNNING' : '❌ STOPPED'}\n` +
-            `Interval: ${STATE.profileInterval/3600000}h`);
-    }
-
-    // ── name only ──
-    if (cmd === 'name') {
-        await sock.sendMessage(chatId, { text:'🎭 *Generating name...*' }, opts);
-        const name = await generateProfileName();
-        if (name && await updateWAName(sock, name)) return send('✅ Name Updated', `New name: *${name}*`);
-        return send('❌ Failed', 'Could not generate or update name.');
-    }
-
-    // ── bio only ──
-    if (cmd === 'bio') {
-        await sock.sendMessage(chatId, { text:'🎭 *Generating bio...*' }, opts);
-        const bio = await generateProfileBio();
-        if (bio && await updateWABio(sock, bio)) return send('✅ Bio Updated', `New bio: _${bio}_`);
-        return send('❌ Failed', 'Could not generate or update bio.');
-    }
-
-    // ── pfp only ──
-    if (cmd === 'pfp') {
-        await sock.sendMessage(chatId, { text:'🎭 *Generating AI profile picture...*\n_This may take a moment_' }, opts);
-        const pfpPath = await generateProfilePFP();
-        if (pfpPath && await updateWAPFP(sock, pfpPath)) return send('✅ Picture Updated', 'New AI-generated profile picture set!');
-        return send('❌ Failed', 'Could not generate or update profile picture.');
-    }
-
-    // ── interval ──
-    if (cmd === 'interval') {
-        if (!rest) return send('⏰ Interval', `Current: *${STATE.profileInterval/3600000}h*\nUsage: .profile interval <hours>`);
-        const h = parseFloat(rest);
-        if (isNaN(h) || h < 0.5) return send('❌ Error', 'Minimum interval is 0.5 hours.');
-        STATE.profileInterval = h * 3600000;
-        if (STATE.autoProfile) startProfileScheduler(sock); // restart with new interval
-        return send('⏰ Interval Updated', `Auto-update every *${h}* hour(s).`);
-    }
-
-    // ── history ──
-    if (cmd === 'history') {
-        const type = (rest||'names').toLowerCase();
-        if (type === 'names') {
-            const hist = DB.profileHistory('name', 10);
-            return send('📜 Name History', hist.length ? hist.map(n=>`• ${n}`).join('\n') : 'No history.');
-        }
-        if (type === 'bios') {
-            const hist = DB.profileHistory('bio', 10);
-            return send('📜 Bio History', hist.length ? hist.map(b=>`• _${b}_`).join('\n') : 'No history.');
-        }
-        if (type === 'pfps') {
-            const hist = DB.pfpHistory(10);
-            return send('🖼️ PFP History', hist.length
-                ? hist.map(p=>`• ${path.basename(p.filepath)}\n  _${(p.prompt||'').slice(0,50)}..._`).join('\n')
-                : 'No history.');
-        }
-        return send('Usage', '.profile history [names|bios|pfps]');
-    }
-
-    // ── help ──
-    return send('🎭 Dynamic Profile', [
-        '.profile update           — update all elements now',
-        '.profile name             — generate new name only',
-        '.profile bio              — generate new bio only',
-        '.profile pfp              — generate new AI picture',
-        '.profile auto [on|off]    — toggle automatic updates',
-        '.profile interval <hours> — set update frequency',
-        '.profile history [type]   — view profile history',
-        '',
-        `Auto-update: ${STATE.autoProfile ? '✅ ON' : '❌ OFF'} | Interval: ${STATE.profileInterval/3600000}h`
-    ].join('\n'));
-});
-
-// ─────────────────────────────────────────
-// .api — Monitor & Control
-// ─────────────────────────────────────────
-commandRegister({
-    pattern:  'apimon',
-    cmdname:  'apimon',
-    alias:    ['apimonitor','aistats','aiapi'],
-    type:     'ai',
-    category: 'AI',
-    desc:     'Monitor AI API usage and health.',
-    react:    '📊',
-    filename: __filename
-}, async (arg1, ...args) => {
-    const { m, sock } = resolveContext(arg1, args);
-    const rawId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
-    const chatId = typeof rawId === 'string' ? rawId : null;
-    if (!chatId) return;
-
-    const body  = m.body || m.text || '';
-    const parts = body.trim().split(/\s+/);
-    const cmd   = (parts[1]||'status').toLowerCase();
-    const send  = (hdr, txt) => sendFmt(sock, chatId, m, hdr, txt);
-
-    if (cmd === 'status') {
-        const now = Date.now();
-        const rpm = STATE.apiRPM.filter(t => now-t < 60000).length;
-        const rph = STATE.apiRPH.filter(t => now-t < 3600000).length;
-        const bar = (n, max, len=10) => {
-            const fill = Math.round((n/max)*len);
-            return '█'.repeat(Math.min(fill,len)) + '░'.repeat(Math.max(len-fill,0));
-        };
-        return send('📊 API Status', [
-            `1min:  ${bar(rpm,CFG.MAX_RPM)} (${rpm}/${CFG.MAX_RPM})`,
-            `1hour: ${bar(rph,CFG.MAX_RPH)} (${rph}/${CFG.MAX_RPH})`,
-            '',
-            `AI Requests:  ${STATE.apiStats.ai}`,
-            `Image Requests: ${STATE.apiStats.image}`,
-            `Errors:        ${STATE.apiStats.errors}`,
-            '',
-            `Timeout: ${CFG.TIMEOUT/1000}s | Retries: ${CFG.MAX_RETRIES}`
-        ].join('\n'));
+    if (cmd === 'status' || !q) {
+        const s  = Monitor.stats();
+        const cb = Circuit.isOpen() ? '🔴 TRIPPED' : `🟢 OK (${Circuit.fails}/${Circuit.threshold})`;
+        const bar = (v,max,len=10) => '█'.repeat(Math.min(len, Math.round(v/max*len))) + '░'.repeat(Math.max(0, len - Math.round(v/max*len)));
+        safeReply(Gifted, m,
+            `📊 *API Status*\n━━━━━━━━━━━━━━━━━━━━\n` +
+            `*Load:*\n• 1m: \`${bar(s.rpm,Config.MAX_RPM)}\` ${s.rpm}/${Config.MAX_RPM}\n` +
+            `• 1h: \`${bar(s.rph,Config.MAX_RPH)}\` ${s.rph}/${Config.MAX_RPH}\n\n` +
+            `*Today:*\n• AI: ${s.ai} | Images: ${s.img} | Errors: ${s.err}\n\n` +
+            `*Circuit Breaker:* ${cb}\n` +
+            `*Timeout:* ${Config.API_TIMEOUT/1000}s | *Retries:* ${Config.MAX_RETRIES}`);
+        return;
     }
 
     if (cmd === 'health') {
-        await sock.sendMessage(chatId, { text:'🔍 *Checking API health...*' }, buildSafeQuote(m));
-        const results = [];
-        // Test AI
-        try {
-            const res = await callAI("Reply with 'OK' only.");
-            results.push(res.includes('OK') ? '✅ AI API: Healthy' : `⚠️ AI API: Unexpected (${res.slice(0,30)})`);
-        } catch(e) { results.push(`❌ AI API: ${e.message.slice(0,50)}`); }
-        // Test Infip
-        const infipOk = await ensureInfipKey();
-        results.push(infipOk ? '✅ Infip API: Healthy' : '❌ Infip API: Failed');
-        // Rate limit
-        const canReq = checkRate();
-        results.push(canReq ? '✅ Rate Limit: Clear' : '⚠️ Rate Limit: Active');
-        return send('🔍 API Health', results.join('\n'));
+        const proc = await sendProcessing(Gifted, jid(m), m, '🔍 _Running health check…_');
+        const lines = [];
+        const { text: tr, err: te } = await askAI('Reply with exactly: HEALTH_OK');
+        lines.push((!te && tr.includes('HEALTH_OK')) ? '✅ QuillBot AI: Healthy' : `⚠️ QuillBot AI: ${tr.slice(0,50)}`);
+        lines.push(Circuit.isOpen() ? '🔴 Circuit Breaker: TRIPPED' : '✅ Circuit Breaker: Closed');
+        lines.push(Monitor.allow() ? '✅ Rate Limit: Clear' : '⚠️ Rate Limit: Active');
+        lines.push(infipValidated  ? `✅ Infip API: Key validated` : `⚠️ Infip API: Not yet validated`);
+        try { dbGet('SELECT 1'); lines.push('✅ Database: Connected'); } catch(e) { lines.push('❌ Database: Error'); }
+        await editMsg(Gifted, proc, `🔍 *Health Check*\n\n${lines.join('\n')}`);
+        return;
     }
 
     if (cmd === 'reset') {
-        STATE.apiRPM    = [];
-        STATE.apiRPH    = [];
-        STATE.apiStats  = { ai:0, image:0, errors:0 };
-        return send('✅ Reset', 'All API stats reset.');
+        const type = raw[1]?.toLowerCase();
+        if (type === 'circuit') { Circuit.reset(); safeReply(Gifted, m, '✅ Circuit breaker reset.'); }
+        else if (type === 'daily') {
+            Monitor.daily = { ai:0, img:0, err:0, day: new Date().toDateString() };
+            safeReply(Gifted, m, '✅ Daily stats reset.');
+        } else safeReply(Gifted, m, '📝 Usage: `.apimon reset <circuit|daily>`');
+        return;
     }
 
-    if (cmd === 'config') {
-        const subparts = parts.slice(2);
-        const key   = subparts[0];
-        const value = subparts[1];
-        if (!key || !value) return send('Usage', '.apimon config <key> <value>\nKeys: timeout, max_retries, max_rpm');
-        if (key === 'timeout')     CFG.TIMEOUT     = parseInt(value)*1000;
-        else if (key === 'max_retries') CFG.MAX_RETRIES = parseInt(value);
-        else if (key === 'max_rpm') CFG.MAX_RPM    = parseInt(value);
-        else return send('❌ Error', `Unknown key: ${key}`);
-        return send('✅ Config Updated', `${key} = ${value}`);
-    }
-
-    return send('📊 API Monitor', [
-        '.apimon status  — usage stats',
-        '.apimon health  — check API health',
-        '.apimon reset   — reset stats',
-        '.apimon config <key> <value> — update config'
-    ].join('\n'));
+    safeReply(Gifted, m,
+        `📊 *API Monitor*\n\n` +
+        `• \`.apimon status\` — Usage stats & load\n` +
+        `• \`.apimon health\` — Full health check\n` +
+        `• \`.apimon reset <circuit|daily>\` — Reset counters`);
 });
 
-// ─────────────────────────────────────────
-// .autoenhance — Toggle smart message rewriting
-// ─────────────────────────────────────────
+// ==============================================================================
+// 16. AUTO-ENHANCE TOGGLE  .autoenhance
+// ==============================================================================
 commandRegister({
-    pattern:  'autoenhance',
-    cmdname:  'autoenhance',
-    alias:    ['smartedit','aienhance','msgedit'],
-    type:     'ai',
-    category: 'AI',
-    desc:     'Toggle AI auto-enhance for sent messages (fixes grammar, improves clarity).',
-    react:    '✍️',
+    pattern : 'autoenhance',
+    cmdname : 'autoenhance',
+    alias   : ['smartedit','autoedit','aienhance'],
+    type    : 'ai',
+    category: 'ai',
+    desc    : 'Toggle AI auto-correction of your own messages.',
+    react   : '✍️',
     filename: __filename
 }, async (arg1, ...args) => {
-    const { m, sock } = resolveContext(arg1, args);
-    const rawId = m.chat || m.from || m.jid || (m.key&&m.key.remoteJid);
-    const chatId = typeof rawId === 'string' ? rawId : null;
-    if (!chatId) return;
+    const { m, sock: Gifted } = resolveCtx(arg1, args);
+    const conText = arg1?.isSuperUser !== undefined ? arg1 : args.find(a => a?.isSuperUser !== undefined) || {};
+    if (!conText.isSuperUser && !arg1.isSuperUser) return safeReply(Gifted, m, '❌ Owner only.');
 
-    const body   = m.body || m.text || '';
-    const parts  = body.trim().split(/\s+/);
-    const action = (parts[1]||'status').toLowerCase();
-    const send   = (hdr, txt) => sendFmt(sock, chatId, m, hdr, txt);
-
-    if (action === 'on')  STATE.autoEnhance = true;
-    if (action === 'off') STATE.autoEnhance = false;
-
-    return send('✍️ Auto-Enhance', [
-        `Status: *${STATE.autoEnhance ? 'ON ✅' : 'OFF ❌'}*`,
-        '',
-        'What it does:',
-        '• Fixes spelling & grammar',
-        '• Improves text clarity',
-        '• Preserves original tone',
-        '• Works on messages sent to bot in DM/chat mode',
-        '',
-        'Usage: .autoenhance [on|off|status]'
-    ].join('\n'));
+    const action = (conText.q || arg1.q || '').trim().toLowerCase();
+    if (action === 'on')  { State.autoEnhance = true;  return safeReply(Gifted, m, '✍️ *Auto-Enhance: ON*\n\nYour messages will be silently improved by AI.'); }
+    if (action === 'off') { State.autoEnhance = false; return safeReply(Gifted, m, '✍️ *Auto-Enhance: OFF*'); }
+    safeReply(Gifted, m,
+        `✍️ *Auto-Enhance*\n\n*Status:* ${State.autoEnhance ? '✅ ON' : '❌ OFF'}\n\n` +
+        `*What it does:*\n• Fixes spelling & grammar\n• Improves clarity\n• Preserves your tone & language\n• Silently edits messages after you send them\n\n` +
+        `*Usage:* \`.autoenhance on/off\``);
 });
 
-// ─────────────────────────────────────────
-// AUTO-REPLY WATCHER (on: body — monitors all incoming messages)
-// ─────────────────────────────────────────
+// ==============================================================================
+// 17. AI TRANSLATE  .aitranslate
+// ==============================================================================
 commandRegister({
-    pattern:        '.*',
-    on:             'body',
-    dontAddCommandList: true,
-    type:           'ai',
-    category:       'AI',
-    filename:       __filename
+    pattern : 'aitranslate',
+    cmdname : 'aitranslate',
+    alias   : ['gitrans','aitrans','trns'],
+    type    : 'ai',
+    category: 'ai',
+    desc    : 'AI-powered translation. Usage: .aitranslate <language> <text>',
+    react   : '🌐',
+    filename: __filename
 }, async (arg1, ...args) => {
-    const { m, sock } = resolveContext(arg1, args);
+    const { m, sock: Gifted } = resolveCtx(arg1, args);
+    const conText = arg1?.isSuperUser !== undefined ? arg1 : args.find(a => a?.isSuperUser !== undefined) || {};
+    if (!conText.isSuperUser && !arg1.isSuperUser) return safeReply(Gifted, m, '❌ Owner only.');
 
-    // Skip own messages & commands
-    if (m.key?.fromMe) return;
-    const body = m.body || m.text || '';
-    if (!body && !m.message?.imageMessage) return;
-    if (body.startsWith('.') || body.startsWith('!') || body.startsWith('/')) return;
+    const q    = (conText.q || arg1.q || '').trim();
+    const from = jid(m);
+    const parts = q.split(/\s+/);
+    const lang  = parts[0];
+    const text  = parts.slice(1).join(' ');
 
-    const senderId = m.sender || m.key?.participant || (m.key?.remoteJid?.includes('@s') ? m.key.remoteJid : null);
-    const chatId   = m.chat || m.from || m.jid || m.key?.remoteJid;
-    const isGroup  = chatId?.includes('@g.us');
-    const isDM     = !isGroup;
+    if (!lang || !text) return safeReply(Gifted, m,
+        `📝 Usage: \`.aitranslate <language> <text>\`\n\nExamples:\n• \`.aitranslate Spanish Hello world\`\n• \`.aitranslate Japanese Good morning\``);
 
-    // Priority 1: Global stalk
-    if (senderId && STATE.stalkTargets[senderId]) {
-        return await processAutoReply(m, sock, STATE.stalkTargets[senderId], 'stalk');
-    }
-
-    // Priority 2: Local target (in this chat)
-    if (senderId && STATE.activeTargets[senderId]) {
-        return await processAutoReply(m, sock, STATE.activeTargets[senderId], 'target');
-    }
-
-    // Priority 3: Active chat
-    if (chatId && STATE.activeChats[chatId]) {
-        return await processAutoReply(m, sock, STATE.activeChats[chatId], 'chat');
-    }
-
-    // Priority 4: DM mode
-    if (isDM && STATE.dmMode) {
-        const gem     = STATE.dmGem || DEFAULT_PERSONA;
-        const dmCtx   = { gem, history:[] };
-        return await processAutoReply(m, sock, dmCtx, 'dm');
-    }
+    const proc = await sendProcessing(Gifted, from, m, `🌐 _Translating to ${lang}…_`);
+    const { text: result, err } = await askAI(
+        `Translate the following text to ${lang}.\nReturn ONLY the translated text.\n\nText: ${text}`);
+    await editMsg(Gifted, proc, err ? `❌ ${result}` :
+        `🌐 *Translation*\n\n📝 *Original:* ${text}\n\n🔄 *${lang}:* ${result}`);
 });
 
 // ==============================================================================
-// DONE
+// 18. AI WRITER  .aiwrite
 // ==============================================================================
+commandRegister({
+    pattern : 'aiwrite',
+    cmdname : 'aiwrite',
+    alias   : ['giwrite','compose','aipen','draft'],
+    type    : 'ai',
+    category: 'ai',
+    desc    : 'AI creative writing (messages, essays, roasts, captions, etc.)',
+    react   : '✍️',
+    filename: __filename
+}, async (arg1, ...args) => {
+    const { m, sock: Gifted } = resolveCtx(arg1, args);
+    const conText = arg1?.isSuperUser !== undefined ? arg1 : args.find(a => a?.isSuperUser !== undefined) || {};
+    if (!conText.isSuperUser && !arg1.isSuperUser) return safeReply(Gifted, m, '❌ Owner only.');
+
+    const q    = (conText.q || arg1.q || '').trim();
+    const from = jid(m);
+    const raw  = q.split(/\s+/);
+    const type = raw[0]?.toLowerCase() || '';
+
+    const valid = ['message','essay','story','caption','bio','code','email','reply','roast','flirt','apology','tweet','speech'];
+
+    if (!valid.includes(type)) return safeReply(Gifted, m,
+        `✍️ *AI Writer*\n\n*Types:*\n${valid.map(t=>`\`${t}\``).join(' | ')}\n\n` +
+        `*Usage:* \`.aiwrite <type> <topic>\`\n\n` +
+        `*Examples:*\n• \`.aiwrite roast my friend who's always late\`\n• \`.aiwrite caption sunset over mountains\`\n• \`.aiwrite message ask boss for day off\``);
+
+    const topic = raw.slice(1).join(' ');
+    if (!topic) return safeReply(Gifted, m, `📝 Provide a topic. Example: \`.aiwrite ${type} <topic>\``);
+
+    const proc = await sendProcessing(Gifted, from, m, `✍️ _Writing ${type}…_`);
+
+    const prompts = {
+        message  : `Write a natural WhatsApp message about: ${topic}. Concise and real.`,
+        essay    : `Write a structured essay about: ${topic}. Include intro, 3 body paragraphs, conclusion.`,
+        story    : `Write a short engaging story about: ${topic}. Make it gripping.`,
+        caption  : `Write 3 creative social media captions for: ${topic}. Include relevant emojis.`,
+        bio      : `Write a punchy, memorable bio for: ${topic}. Keep it under 150 chars.`,
+        code     : `Write clean, well-commented code for: ${topic}. Include brief explanation.`,
+        email    : `Write a professional email about: ${topic}. Include subject line. Format clearly.`,
+        reply    : `Write a witty, clever reply to: ${topic}. Make it memorable.`,
+        roast    : `Write a playful, funny roast about: ${topic}. Friendly tone, not mean.`,
+        flirt    : `Write a charming, tasteful flirty message to/about: ${topic}. Keep it classy.`,
+        apology  : `Write a genuine, sincere apology about: ${topic}. Avoid being cringe.`,
+        tweet    : `Write 3 tweet options about: ${topic}. Each under 280 chars. Include hashtags.`,
+        speech   : `Write a short speech about: ${topic}. Engaging opening, 3 main points, strong close.`
+    };
+
+    const { text, err } = await askAI(prompts[type]);
+    await editMsg(Gifted, proc, err ? `❌ ${text}` :
+        `✍️ *${type.charAt(0).toUpperCase()+type.slice(1)}*\n\n${text}`);
+});
+
+// ==============================================================================
+// 19. AI DECODE  .aidecode  (bonus: explain/analyze any text or image)
+// ==============================================================================
+commandRegister({
+    pattern : 'aidecode',
+    cmdname : 'aidecode',
+    alias   : ['gianalyze','gidecode','aianalyze','explain'],
+    type    : 'ai',
+    category: 'ai',
+    desc    : 'Explain, analyze, or decode any text/image with AI.',
+    react   : '🔍',
+    filename: __filename
+}, async (arg1, ...args) => {
+    const { m, sock: Gifted } = resolveCtx(arg1, args);
+    const conText = arg1?.isSuperUser !== undefined ? arg1 : args.find(a => a?.isSuperUser !== undefined) || {};
+    if (!conText.isSuperUser && !arg1.isSuperUser) return safeReply(Gifted, m, '❌ Owner only.');
+
+    const q     = (conText.q || arg1.q || '').trim();
+    const from  = jid(m);
+    const replied = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+
+    if (!q && !replied) return safeReply(Gifted, m,
+        '📝 Reply to any message/image with `.aidecode [optional question]` to analyze it.');
+
+    let imageUrls = [];
+    let inputText = q;
+
+    if (replied?.imageMessage) {
+        const proc2 = await sendProcessing(Gifted, from, m, '👁️ _Downloading image…_');
+        try {
+            const tp = await Gifted.downloadAndSaveMediaMessage(replied.imageMessage, `tmp_decode_${Date.now()}`);
+            if (tp) { const url = await uploadImgBB(tp); if (url) imageUrls.push(url); try{fs.unlinkSync(tp);}catch(e){} }
+        } catch(e){}
+        await tryDelete(Gifted, proc2.key);
+    }
+
+    const ctx = replied?.conversation || replied?.extendedTextMessage?.text;
+    if (ctx) inputText = q ? `${ctx}\n\nFocus on: ${q}` : ctx;
+
+    const proc = await sendProcessing(Gifted, from, m, '🔍 _Analysing…_');
+    const prompt = imageUrls.length
+        ? `Analyze this image in detail. ${q || 'What do you see? What is the context?'}`
+        : `Explain and analyze the following:\n\n"${inputText}"\n\nBe thorough but clear.`;
+
+    const { text, err } = await askAI(prompt, imageUrls);
+    await editMsg(Gifted, proc, err ? `❌ ${text}` : `🔍 *Analysis*\n\n${text}`);
+});
+
+// ==============================================================================
+// 20. CORE UTILITIES (private helpers)
+// ==============================================================================
+
+/** Deep resolve socket + message regardless of how framework passes args */
+const resolveCtx = (arg1, args) => {
+    let sock = global.conn || global.client || arg1.bot || arg1.client;
+    let m    = arg1;
+    for (const arg of [arg1, ...args]) {
+        if (arg && typeof arg === 'object' && !Array.isArray(arg)) {
+            if (typeof arg.sendMessage === 'function')                          sock = arg;
+            else if (arg.sock  && typeof arg.sock.sendMessage  === 'function') sock = arg.sock;
+            else if (arg.bot   && typeof arg.bot.sendMessage   === 'function') sock = arg.bot;
+            if (arg.chat || arg.from || arg.jid || arg.key?.remoteJid)         m    = arg;
+        }
+    }
+    return { m, sock };
+};
+
+/** Safe reply that tries native reply then quoted sendMessage as fallback */
+const safeReply = async (Gifted, m, text) => {
+    const chatId = jid(m);
+    if (!chatId) return;
+    try {
+        if (typeof m.reply === 'function') return m.reply(text);
+        const quoted = buildSafeQuoted(m);
+        if (Gifted?.sendMessage) return Gifted.sendMessage(chatId, { text }, quoted);
+    } catch(e) {
+        try { Gifted?.sendMessage(chatId, { text }); } catch(e2){}
+    }
+};
+
+const buildSafeQuoted = (m) => {
+    if (!m?.key?.remoteJid || !m?.key?.id) return {};
+    const k = { remoteJid: String(m.key.remoteJid), fromMe: !!m.key.fromMe, id: String(m.key.id) };
+    if (m.key.participant) k.participant = String(m.key.participant);
+    return { quoted: { key: k, message: m.message || {} } };
+};
+
 } else {
-    console.error('❌ CRITICAL: AIGems module failed to map command registration function.');
+    console.error('❌ [AIGems] CRITICAL: Could not map command registration function.');
 }
+
+// ==============================================================================
+// 21. EVENT-DRIVEN WATCHERS
+//     Registered via global.conn so they fire independently of commands.
+//     Retry every 10 s until Gifted socket is available.
+// ==============================================================================
+
+let _watcherRegistered = false;
+
+const registerWatchers = (Gifted) => {
+    if (!Gifted || _watcherRegistered) return;
+    _watcherRegistered = true;
+
+    // ── AUTO-REPLY WATCHER ────────────────────────────────────────────────────
+    Gifted.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type === 'notify') return; // skip historical
+
+        for (const msg of messages) {
+            if (!msg.message) continue;
+            const fromMe   = msg.key.fromMe;
+            const chatId   = msg.key.remoteJid || '';
+            const senderId = msg.key.participant || msg.key.remoteJid || '';
+            const isGroup  = chatId.endsWith('@g.us');
+            const body     =
+                msg.message.conversation ||
+                msg.message.extendedTextMessage?.text ||
+                msg.message.imageMessage?.caption ||
+                '';
+
+            // ── AUTO-ENHANCE (owner's own outgoing messages) ─────────────────
+            if (fromMe && State.autoEnhance && body && body.length > 10 && !body.startsWith('.')) {
+                setImmediate(async () => {
+                    try {
+                        await sleep(600 + Math.random() * 800);
+                        const { text: enhanced, err } = await askAI(
+                            `Enhance this message: fix spelling/grammar, improve clarity, preserve tone and language.\n` +
+                            `Do NOT change the language. Return ONLY the enhanced text.\n\nOriginal: ${body}`
+                        );
+                        if (!err && enhanced.trim() && enhanced.trim() !== body.trim()) {
+                            await Gifted.sendMessage(chatId, { text: enhanced.trim(), edit: msg.key })
+                                .catch(() => {}); // silent fail
+                        }
+                    } catch(e) {}
+                });
+                continue;
+            }
+
+            if (fromMe) continue; // skip bot's own messages below
+
+            // Skip command messages
+            if (body.startsWith('.') || body.startsWith('/') || body.startsWith('!')) continue;
+            if (!body.trim() && !msg.message.imageMessage) continue;
+
+            // ── DETERMINE ACTIVE MODE ────────────────────────────────────────
+            let activeData = null;
+
+            // Priority 1: global stalker
+            if (State.globalStalkers.has(senderId)) {
+                activeData = State.globalStalkers.get(senderId);
+            }
+            // Priority 2: local target (chat-specific)
+            else if (State.activeTargets.has(senderId)) {
+                const td = State.activeTargets.get(senderId);
+                if (!td.chatId || td.chatId === chatId) activeData = td;
+            }
+            // Priority 3: whole-chat mode
+            else if (State.activeChats.has(chatId)) {
+                if (isGroup && msg.key.participant === chatId) continue; // skip system msgs
+                activeData = State.activeChats.get(chatId);
+            }
+            // Priority 4: DM auto-pilot
+            else if (!isGroup && State.dmActive) {
+                // Create a temporary session per sender
+                if (!State._dmSessions) State._dmSessions = new Map();
+                if (!State._dmSessions.has(senderId))
+                    State._dmSessions.set(senderId, { gem: State.dmGem || State.DEFAULT_PERSONA, history: [] });
+                activeData = State._dmSessions.get(senderId);
+            }
+
+            if (!activeData) continue;
+
+            setImmediate(async () => {
+                try {
+                    let imageUrls = [];
+                    let inputText = body || '[image]';
+
+                    // Download + upload inline image for vision
+                    if (msg.message.imageMessage) {
+                        try {
+                            const tp = await Gifted.downloadAndSaveMediaMessage(
+                                msg.message.imageMessage, `tmp_watch_${Date.now()}`);
+                            if (tp) {
+                                const url = await uploadImgBB(tp);
+                                if (url) imageUrls.push(url);
+                                try { fs.unlinkSync(tp); } catch(e){}
+                            }
+                        } catch(e) {}
+                    }
+
+                    // Add user message to history
+                    State.addHistory(activeData, 'User', inputText);
+
+                    // Build full prompt
+                    const fullPrompt = State.buildPrompt(activeData.gem, activeData.history, inputText);
+
+                    // Human-like delay: simulate reading time
+                    const readDelay = Math.min(inputText.length * 40, 3500) + Math.random() * 800;
+                    await sleep(readDelay);
+
+                    // Show typing indicator
+                    try { await Gifted.sendPresenceUpdate('composing', chatId); } catch(e){}
+
+                    const { text: response, err } = await getAIResponse_watcher(fullPrompt, imageUrls);
+
+                    // Stop typing
+                    try { await Gifted.sendPresenceUpdate('paused', chatId); } catch(e){}
+
+                    if (err && Circuit.isOpen()) return; // silent fail when circuit is tripped
+
+                    // Add AI response to history
+                    State.addHistory(activeData, 'AI', response);
+
+                    // Build quoted reference
+                    const q = {};
+                    if (msg.key?.remoteJid && msg.key?.id) {
+                        const k = { remoteJid: String(msg.key.remoteJid), fromMe: false, id: String(msg.key.id) };
+                        if (msg.key.participant) k.participant = String(msg.key.participant);
+                        q.quoted = { key: k, message: msg.message };
+                    }
+
+                    await Gifted.sendMessage(chatId, { text: response }, q);
+
+                } catch(e) {
+                    console.error('[AIGems] Watcher process error:', e.message);
+                }
+            });
+        }
+    });
+
+    console.log('[AIGems] 👁️ Event watchers registered.');
+};
+
+/** Watcher-specific AI call — same logic but kept separate for clarity */
+const getAIResponse_watcher = async (prompt, imageUrls = []) => askAI(prompt, imageUrls);
+
+// Boot: try to attach watchers once socket is ready
+const _bootWatcher = setInterval(() => {
+    const G = global.conn || global.client;
+    if (G) { registerWatchers(G); clearInterval(_bootWatcher); }
+}, 10000);
+
+// Also attempt immediately in case already connected
+setTimeout(() => {
+    const G = global.conn || global.client;
+    if (G) { registerWatchers(G); clearInterval(_bootWatcher); }
+}, 3000);
+
+console.log('[AIGems] ✅ Module loaded — AI Gems, Image Gen, Auto-Reply, Auto-Enhance ready.');
