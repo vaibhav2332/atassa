@@ -1,9 +1,8 @@
 /**
  * @module AIGems
- * @description Advanced AI ecosystem for WhatsApp — Gem persona management, 
- *              Multi-model Image Generation, Auto-Pilot replies, and context-aware tools.
- * @version 2.0.0
- * @framework Atassa Bulletproof
+ * @description AI system — Gem personas, Image generation, Auto-reply watcher,
+ *              Auto-enhance, Translate, Creative Writer, Vision decode, API monitor.
+ * @note Built on Atassa Bulletproof Framework. Same credentials as original Python module.
  */
 
 'use strict';
@@ -17,99 +16,72 @@ const fs      = require('fs');
 const path    = require('path');
 
 let Database;
-try { 
-    Database = require('better-sqlite3'); 
-} catch (e) {
-    console.error('[AIGems] better-sqlite3 not found. Persona Vault will be volatile (RAM-only).');
+try { Database = require('better-sqlite3'); } catch(e) {
+    console.error('[AIGems] better-sqlite3 missing — DB disabled');
 }
 
 // ==============================================================================
-// 2. ENHANCED CONFIGURATION
+// 2. CONFIGURATION  (all credentials preserved 1-to-1 from Python source)
 // ==============================================================================
 const CFG = {
-    // Database and Persistence
     DB_PATH   : path.join(__dirname, '..', 'gift', 'database', 'gems_ai.db'),
-    MAX_HIST  : 40, // Increased history for deeper context
-    
-    // Formatting Injection (WhatsApp Specific)
-    MARKDOWN_RULE: 'SYSTEM INSTRUCTION: You must strictly use WhatsApp markdown. ' +
-                   'Use *bold* for emphasis/titles, _italics_ for thoughts/side-notes, ' +
-                   '~strikethrough~ for sarcasm or corrections, and ```code blocks``` for any technical output. ' +
-                   'NEVER use Markdown headers (#) or double-asterisks (**). Use single asterisk (*) for bold. ' +
-                   'Keep responses conversational and avoid AI-typical prefixes.',
-
-    // API Keys & Endpoints (Preserving original source credentials)
+    MAX_HIST  : 30,
     IMGBB_KEY : 'afcf96b3fa068c1ce3ea7f5d90b2c849',
     INFIP_POOL: ['infip-4ccc6287','infip-30f9b23c','infip-820535e7','infip-30a7d4bc','infip-551dc9e9'],
     INFIP_URL : 'https://api.infip.pro',
-
-    // Image Model Tiers
-    IMG_MDLS: {
-        'phoenix'        : { tier: 'free', desc: 'Phoenix (General Purpose)' },
-        'flux-schnell'   : { tier: 'free', desc: 'Ultra-Fast Flux' },
-        'flux2-dev'      : { tier: 'free', desc: 'Flux 2 Dev (High Detail)' },
-        'flux2-klein-9b' : { tier: 'free', desc: 'Flux 2 Klein 9B' },
-        'sdxl'           : { tier: 'free', desc: 'Stable Diffusion XL' },
-        'sdxl-lite'      : { tier: 'free', desc: 'SDXL Lightweight' },
-        'dreamshaper'    : { tier: 'free', desc: 'Artistic DreamShaper' },
-        'lucid-origin'   : { tier: 'free', desc: 'Lucid Origin' },
-        'qwen'           : { tier: 'free', desc: 'Qwen Visual' },
-        'nbpro'          : { tier: 'pro',  desc: 'Pro-Tier Realism' },
-        'nano-banana'    : { tier: 'pro',  desc: 'High-End Aesthetic' }
+    IMG_MDLS  : {
+        'phoenix'        : {tier:'free', desc:'Phoenix (default)'},
+        'flux-schnell'   : {tier:'free', desc:'Fast Flux'},
+        'flux2-dev'      : {tier:'free', desc:'Flux 2 Dev (quality)'},
+        'flux2-klein-9b' : {tier:'free', desc:'Flux 2 Klein 9B'},
+        'sdxl'           : {tier:'free', desc:'Stable Diffusion XL'},
+        'sdxl-lite'      : {tier:'free', desc:'Lightweight SDXL'},
+        'dreamshaper'    : {tier:'free', desc:'Artistic DreamShaper'},
+        'img3'           : {tier:'free', desc:'Basic generation'},
+        'img4'           : {tier:'free', desc:'Enhanced basic'},
+        'lucid-origin'   : {tier:'free', desc:'Lucid Origin'},
+        'z-image-turbo'  : {tier:'free', desc:'Fast turbo'},
+        'qwen'           : {tier:'free', desc:'Qwen model'},
+        'nbpro'          : {tier:'pro',  desc:'Professional quality'},
+        'nano-banana'    : {tier:'pro',  desc:'High-end model'}
     },
-
-    // QuillBot Session Data (Preserved 1-to-1)
+    // QuillBot API credentials — preserved exactly from Python
     QB_COOKIES: {
-        abIDV2: '546', 
-        anonID: 'f7ceed385778e221', 
-        premium: 'false',
-        acceptedPremiumModesTnc: 'false', 
-        '_sp_ses.48cd': '*',
-        'connect.sid': 's%3AoNTyr66sFMpJww2YC1k9jsS5rG8gfAh_.Sm0N0bBqdEBKfsYVLxJ%2FePg%2B%2FyDjynTPY69eA57QGIk',
-        qdid: '78e86ed47333249550c398b65d45ad12', 
-        authenticated: 'true',
-        '_sp_id.48cd': '37c7e1f4-cd04-4797-afdf-d0b8e6ae880f.1760000217.3.1765560556.1765046295'
+        abIDV2:'546', anonID:'f7ceed385778e221', premium:'false',
+        acceptedPremiumModesTnc:'false', '_sp_ses.48cd':'*',
+        'connect.sid':'s%3AoNTyr66sFMpJww2YC1k9jsS5rG8gfAh_.Sm0N0bBqdEBKfsYVLxJ%2FePg%2B%2FyDjynTPY69eA57QGIk',
+        qdid:'78e86ed47333249550c398b65d45ad12', authenticated:'true',
+        '_sp_id.48cd':'37c7e1f4-cd04-4797-afdf-d0b8e6ae880f.1760000217.3.1765560556.1765046295'
     },
     QB_HEADERS: {
-        'accept': 'text/event-stream',
-        'accept-language': 'en-US,en;q=0.9',
-        'content-type': 'application/json',
-        'origin': 'https://quillbot.com',
-        'referer': 'https://quillbot.com/ai-chat',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
-        'webapp-version': '38.25.1'
+        'accept':'text/event-stream', 'accept-language':'en-US,en;q=0.7',
+        'content-type':'application/json', 'origin':'https://quillbot.com',
+        'referer':'https://quillbot.com/ai-chat',
+        'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+        'webapp-version':'38.25.1'
     },
-
-    // Default Generation Specs
+    // Mutable runtime settings
     IMG_MODEL  : 'phoenix',
     IMG_SIZE   : '1024x1024',
     IMG_COUNT  : 1,
     IMG_QUALITY: 'standard',
     IMG_STYLE  : 'vivid',
-
-    // Safety & Limits
     MAX_RPM    : 60,
-    MAX_RPH    : 1200,
-    TIMEOUT    : 90000,
+    MAX_RPH    : 1000,
+    TIMEOUT    : 60000,
     RETRIES    : 3
 };
 
-const COOKIE_STR = Object.entries(CFG.QB_COOKIES).map(([k, v]) => `${k}=${v}`).join('; ');
+const COOKIE_STR = Object.entries(CFG.QB_COOKIES).map(([k,v]) => `${k}=${v}`).join('; ');
 
 // ==============================================================================
-// 3. DATABASE INITIALIZATION (GEM PERSONA VAULT)
+// 3. DATABASE
 // ==============================================================================
 let db = null;
 if (Database) {
     try {
-        // Ensure directory exists
-        const dbDir = path.dirname(CFG.DB_PATH);
-        if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
-
         db = new Database(CFG.DB_PATH);
         db.pragma('journal_mode = WAL');
-        
-        // Table for AI Personas
         db.exec(`
             CREATE TABLE IF NOT EXISTS gems (
                 name TEXT PRIMARY KEY,
@@ -117,625 +89,777 @@ if (Database) {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
         `);
-
-        // Table for Stalk/Target Logic Persistence
-        db.exec(`
-            CREATE TABLE IF NOT EXISTS ai_sessions (
-                id TEXT PRIMARY KEY,
-                type TEXT NOT NULL, -- 'stalk', 'target', 'chat'
-                gem_name TEXT,
-                chat_id TEXT,
-                target_jid TEXT,
-                is_active INTEGER DEFAULT 1
-            );
-        `);
-
-        console.log('[AIGems] SQLite Database initialized at:', CFG.DB_PATH);
-    } catch (e) {
-        console.error('[AIGems] Database setup failed:', e.message);
-        db = null;
-    }
+        console.log('[AIGems] Database ready');
+    } catch(e) { console.error('[AIGems] DB error:', e.message); db = null; }
 }
 
-/**
- * Gems Interface - CRUD for AI Personas
- */
 const Gems = {
-    get: (name) => {
-        try {
-            if (!db) return null;
-            const res = db.prepare('SELECT content FROM gems WHERE name = ?').get(name.toLowerCase().trim());
-            return res ? res.content : null;
-        } catch (e) { return null; }
-    },
-    save: (name, content) => {
-        try {
-            if (!db) return false;
-            const stmt = db.prepare('INSERT OR REPLACE INTO gems (name, content) VALUES (?, ?)');
-            return !!stmt.run(name.toLowerCase().trim(), content).changes;
-        } catch (e) { return false; }
-    },
-    del: (name) => {
-        try {
-            if (!db) return false;
-            return db.prepare('DELETE FROM gems WHERE name = ?').run(name.toLowerCase().trim()).changes > 0;
-        } catch (e) { return false; }
-    },
-    list: () => {
-        try {
-            if (!db) return [];
-            return db.prepare('SELECT name FROM gems ORDER BY name ASC').all().map(r => r.name);
-        } catch (e) { return []; }
-    }
+    get  : (n) => { try { return db?.prepare('SELECT content FROM gems WHERE name=?').get(n.toLowerCase().trim())?.content ?? null; } catch(e){ return null; } },
+    save : (n, c) => { try { return !!db?.prepare('INSERT OR REPLACE INTO gems(name,content) VALUES(?,?)').run(n.toLowerCase().trim(), c)?.changes; } catch(e){ return false; } },
+    del  : (n) => { try { return (db?.prepare('DELETE FROM gems WHERE name=?').run(n.toLowerCase().trim())?.changes??0)>0; } catch(e){ return false; } },
+    list : () => { try { return db?.prepare('SELECT name FROM gems ORDER BY name').all().map(r=>r.name)??[]; } catch(e){ return []; } }
 };
-
 // ==============================================================================
-// 4. RATE LIMITER & CIRCUIT BREAKER
+// 4. RATE LIMITER + CIRCUIT BREAKER
 // ==============================================================================
 const Limiter = {
-    min_q: [], 
-    hr_q: [], 
-    daily: { ai: 0, img: 0, err: 0, day: new Date().toDateString() },
-
+    min_q:[], hr_q:[], daily:{ai:0,img:0,err:0,day:new Date().toDateString()},
     check() {
-        const now = Date.now();
-        this.min_q = this.min_q.filter(t => now - t < 60000);
-        this.hr_q = this.hr_q.filter(t => now - t < 3600000);
-        return this.min_q.length < CFG.MAX_RPM && this.hr_q.length < CFG.MAX_RPH;
+        const n=Date.now();
+        this.min_q=this.min_q.filter(t=>n-t<60000);
+        this.hr_q=this.hr_q.filter(t=>n-t<3600000);
+        return this.min_q.length<CFG.MAX_RPM && this.hr_q.length<CFG.MAX_RPH;
     },
-
-    hit(type = 'ai') {
-        const now = Date.now();
-        this.min_q.push(now);
-        this.hr_q.push(now);
-        const today = new Date().toDateString();
-        if (today !== this.daily.day) {
-            this.daily = { ai: 0, img: 0, err: 0, day: today };
-        }
-        if (type === 'ai') this.daily.ai++;
-        if (type === 'img') this.daily.img++;
+    hit(type='ai'){
+        const n=Date.now(); this.min_q.push(n); this.hr_q.push(n);
+        const d=new Date().toDateString();
+        if(d!==this.daily.day) this.daily={ai:0,img:0,err:0,day:d};
+        if(type==='ai') this.daily.ai++;
+        if(type==='img') this.daily.img++;
     },
-
-    err() { this.daily.err++; },
-
-    stats() {
-        const now = Date.now();
-        return {
-            rpm: this.min_q.filter(t => now - t < 60000).length,
-            rph: this.hr_q.filter(t => now - t < 3600000).length,
-            ...this.daily
-        };
+    err(){ this.daily.err++; },
+    stats(){
+        const n=Date.now();
+        return {rpm:this.min_q.filter(t=>n-t<60000).length, rph:this.hr_q.filter(t=>n-t<3600000).length, ...this.daily};
     }
 };
 
 const CB = {
-    fails: 0, 
-    lastFail: 0, 
-    THRESH: 5, 
-    TTL: 300000, // 5 minutes cool-down
-
-    open() {
-        return this.fails >= this.THRESH && (Date.now() - this.lastFail < this.TTL);
-    },
-
-    fail() {
-        this.fails++;
-        this.lastFail = Date.now();
-        Limiter.err();
-    },
-
-    ok() {
-        this.fails = 0;
-    },
-
-    reset() {
-        this.fails = 0;
-        this.lastFail = 0;
-    },
-
-    msg() {
-        const lines = [
-            'neural pathways congested... one sec',
-            'api link hiccupped, trying to reconnect',
-            'brain.exe encountered a minor glitch',
-            'signal weak, retrying the neural handshake'
-        ];
-        return `_*${lines[Math.floor(Math.random() * lines.length)]}*_`;
-    }
+    fails:0, lastFail:0, THRESH:5, TTL:300000,
+    open()  { return this.fails>=this.THRESH && Date.now()-this.lastFail<this.TTL; },
+    fail()  { this.fails++; this.lastFail=Date.now(); Limiter.err(); },
+    ok()    { this.fails=0; },
+    reset() { this.fails=0; this.lastFail=0; },
+    msg()   { return ['neural link glitchy rn','signal weak on my end','connection hiccupped','brain.exe crashed lol'][Math.floor(Math.random()*4)]; }
 };
 
 // ==============================================================================
-// 5. RUNTIME STATE (STALK/TARGET CORE)
+// 5. CORE AI — QuillBot SSE streaming (responseType: 'stream' for proper SSE)
 // ==============================================================================
-const State = {
-    dmActive: false,
-    dmGem: null,
-    autoEnhance: false,
-    
-    // Active session maps
-    chats: new Map(),     // Active in specific group/chat
-    targets: new Map(),   // Responding to specific user in specific chat
-    stalkers: new Map(),  // Responding to specific user EVERYWHERE
-    dmSessions: new Map(), // One-on-one DM sessions
-    
-    // Default Persona
-    PERSONA: 'You are an elite, sharp-witted assistant. Keep replies concise and extremely helpful. ' +
-             'Do not identify as an AI. Use current history to remain consistent.',
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    /**
-     * History Management
-     */
-    addHist(ctx, role, txt) {
-        if (!ctx.history) ctx.history = [];
-        const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
-        ctx.history.push(`[${time}] ${role}: ${txt}`);
-        if (ctx.history.length > CFG.MAX_HIST) {
-            ctx.history = ctx.history.slice(-CFG.MAX_HIST);
-        }
-    },
-
-    /**
-     * Build system prompt with Markdown Injection
-     */
-    buildPrompt(sys, hist, input) {
-        return `CONTEXT_RULES:\n${CFG.MARKDOWN_RULE}\n\nUSER_PERSONA:\n${sys}\n\n` +
-               `--- CONVERSATION LOG ---\n${hist.join('\n')}\n---\n` +
-               `LATEST_INPUT: ${input}\nREPLY:`;
-    }
-};
-// ==============================================================================
-// 6. CORE AI ENGINE — QuillBot SSE Streaming & Reliable Recovery
-// ==============================================================================
-
-/**
- * Clean AI responses for WhatsApp Markdown
- * Removes LaTeX wrappers and problematic escaping
- */
-const cleanResponse = (raw) => {
-    if (!raw) return '';
-    return raw
-        .replace(/\\\(|\\\)/g, '') // Remove \( \)
-        .replace(/\\\[|\\\]/g, '') // Remove \[ \]
-        .replace(/\\n/g, '\n')     // Fix escaped newlines
-        .replace(/\\"/g, '"')      // Fix escaped quotes
-        .replace(/\*\*/g, '*')     // Convert Bold to WA format
-        .replace(/###\s*(.*)/g, '*$1*') // Headers to Bold
-        .replace(/##\s*(.*)/g, '*$1*')
-        .replace(/#\s*(.*)/g, '*$1*')
-        .replace(/\\([_!#*~`])/g, '$1') // Unescape MD chars
-        .trim();
-};
-
-/**
- * Main AI Interaction Logic
- */
 const askAI = async (prompt, imgUrls = []) => {
-    // 1. Circuit Breaker & Rate Limiter Check
-    if (CB.open()) return { text: CB.msg(), err: true };
-    if (!Limiter.check()) return { text: '_*Rate limit reached. Cooling down...*_', err: true };
+    if (CB.open())        return { text: CB.msg(),                          err: true };
+    if (!Limiter.check()) return { text: 'rate limit hit — wait a moment', err: true };
+
+    // ENFORCE WHATSAPP MARKDOWN VIA SYSTEM PREAMBLE
+    const markdownPreamble = "SYSTEM: You must format your response using WhatsApp Markdown (*bold*, _italic_, ~strikethrough~, ```code block```). Use bullet points for lists. Be concise.\n\n";
 
     const payload = {
-        stream: true,
+        stream : true,
         message: {
-            role: 'user',
-            content: prompt,
-            files: imgUrls.map(u => ({
-                url: u,
-                mimeType: 'image/jpeg',
-                name: 'attachment.jpg'
-            }))
+            role   : 'user',
+            content: markdownPreamble + prompt,
+            files  : imgUrls.map(u => ({ url:u, mimeType:'image/jpeg', name:'image.jpg' }))
         },
         product: 'ai-chat',
-        prompt: { id: 'ai_chat' },
-        tools: []
+        prompt : { id:'ai_chat' },
+        tools  : []
     };
-
-    const cookieHeader = Object.entries(CFG.QB_COOKIES)
-        .map(([k, v]) => `${k}=${v}`)
-        .join('; ');
 
     for (let attempt = 0; attempt < CFG.RETRIES; attempt++) {
         try {
             Limiter.hit('ai');
-            
-            const response = await axios.post(
+
+            const res = await axios.post(
                 'https://quillbot.com/api/raven/quill-chat/responses',
                 payload,
                 {
-                    headers: { 
-                        ...CFG.QB_HEADERS, 
-                        'Cookie': cookieHeader 
-                    },
-                    timeout: CFG.TIMEOUT,
+                    headers     : { ...CFG.QB_HEADERS, Cookie: COOKIE_STR },
+                    timeout     : CFG.TIMEOUT,
                     responseType: 'stream'
                 }
             );
 
-            let fullContent = '';
-            
-            // Process SSE Stream
-            const streamData = await new Promise((resolve, reject) => {
-                let buffer = '';
-                const timeoutId = setTimeout(() => resolve(buffer), CFG.TIMEOUT - 2000);
-
-                response.data.on('data', (chunk) => {
-                    const raw = chunk.toString();
-                    const lines = raw.split('\n');
-                    
-                    for (const line of lines) {
-                        const trimmed = line.trim();
-                        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-                        
-                        try {
-                            const jsonStr = trimmed.slice(6);
-                            if (jsonStr === '[DONE]') continue;
-                            
-                            const parsed = JSON.parse(jsonStr);
-                            if (parsed.chunk) {
-                                fullContent += parsed.chunk;
-                            }
-                        } catch (e) {
-                            // Non-critical parsing error for partial chunks
-                        }
-                    }
-                });
-
-                response.data.on('end', () => {
-                    clearTimeout(timeoutId);
-                    resolve(fullContent);
-                });
-
-                response.data.on('error', (err) => {
-                    clearTimeout(timeoutId);
-                    reject(err);
-                });
+            // Collect SSE chunks into full text
+            const rawText = await new Promise((resolve, reject) => {
+                let buf = '';
+                const timer = setTimeout(() => resolve(buf), CFG.TIMEOUT - 5000);
+                res.data.on('data', chunk => { buf += chunk.toString(); });
+                res.data.on('end',  () => { clearTimeout(timer); resolve(buf); });
+                res.data.on('error', e => { clearTimeout(timer); reject(e); });
             });
 
-            if (!streamData || streamData.trim().length === 0) {
-                if (attempt < CFG.RETRIES - 1) {
-                    await new Promise(r => setTimeout(r, 2000));
-                    continue;
+            // Parse SSE: extract all "chunk" values from the data stream
+            let full = '';
+            for (const line of rawText.split('\n')) {
+                const l = line.trim();
+                if (l.startsWith('data: {') && l.includes('"chunk"')) {
+                    try { 
+                        const o = JSON.parse(l.slice(6)); 
+                        if (o.chunk) full += o.chunk; 
+                    } catch(e){}
                 }
-                throw new Error('Empty AI response');
+            }
+
+            if (!full.trim()) {
+                Limiter.err();
+                if (attempt < CFG.RETRIES - 1) { await sleep(1200*(attempt+1)); continue; }
+                CB.fail();
+                return { text: 'empty response — session may be expired', err: true };
             }
 
             CB.ok();
-            return { 
-                text: cleanResponse(streamData), 
-                err: false 
-            };
+            const clean = full
+                .replace(/\\\(|\\\)/g,'').replace(/\\\[|\\\]/g,'')
+                .replace(/\\([a-zA-Z])/g,'$1').trim();
+            return { text: clean, err: false };
 
-        } catch (error) {
-            console.error(`[AIGems] AI Attempt ${attempt + 1} Failed:`, error.message);
+        } catch(e) {
             Limiter.err();
-            
-            if (attempt === CFG.RETRIES - 1) {
-                CB.fail();
-                return { 
-                    text: `_*Connection error: ${error.message}. Please try again later.*_`, 
-                    err: true 
-                };
-            }
-            await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+            console.error(`[AIGems] askAI attempt ${attempt+1}:`, e.message);
+            if (attempt < CFG.RETRIES - 1) await sleep(1200*(attempt+1));
+            else { CB.fail(); return { text: `API unreachable — ${e.message}`, err: true }; }
         }
+    }
+    return { text: CB.msg(), err: true };
+};
+
+// ==============================================================================
+// 6. IMGBB UPLOADER
+// ==============================================================================
+const uploadImgBB = async (filePath) => {
+    if (!fs.existsSync(filePath)) return null;
+    try {
+        const FormData = require('form-data');
+        const form = new FormData();
+        form.append('image', fs.createReadStream(filePath));
+        const res = await axios.post(
+            `https://api.imgbb.com/1/upload?key=${CFG.IMGBB_KEY}&expiration=600`,
+            form, { headers: form.getHeaders(), timeout: 30000 }
+        );
+        return res.data?.data?.url ?? null;
+    } catch(e) { console.error('[AIGems] ImgBB:', e.message); return null; }
+};
+
+// ==============================================================================
+// 7. IMAGE GENERATOR — Infip API (key pool)
+// ==============================================================================
+let _iKey = CFG.INFIP_POOL[Math.floor(Math.random()*CFG.INFIP_POOL.length)];
+let _iOk  = false;
+const _iCache = new Map();
+const _iHdr = () => ({ Authorization:`Bearer ${_iKey}`, 'Content-Type':'application/json' });
+
+const ensureInfip = async () => {
+    if (_iOk) return true;
+    try { 
+        const r = await axios.get(`${CFG.INFIP_URL}/v1/models`, {headers:_iHdr(), timeout:10000}); 
+        if(r.status === 200){ _iOk = true; return true; } 
+    } catch(e){}
+    try { 
+        const r = await axios.post(`${CFG.INFIP_URL}/v1/api-keys`, {}, {timeout:10000}); 
+        if(r.data?.api_key){ _iKey = r.data.api_key; _iOk = true; return true; } 
+    } catch(e){}
+    _iOk = true; return false;
+};
+
+const generateImage = async (prompt, opts={}) => {
+    const model = opts.model || CFG.IMG_MODEL, 
+          size = opts.size || CFG.IMG_SIZE,
+          n = Math.min(opts.count || CFG.IMG_COUNT, 4), 
+          quality = opts.quality || CFG.IMG_QUALITY, 
+          style = opts.style || CFG.IMG_STYLE;
+          
+    const ck = `${model}|${size}|${prompt.slice(0,60)}`;
+    const hit = _iCache.get(ck);
+    if(hit && Date.now() - hit.ts < 3600000) return hit.urls;
+    if(!Limiter.check()) return [];
+    
+    await ensureInfip(); 
+    Limiter.hit('img');
+    
+    for(let i=0; i<CFG.RETRIES; i++){
+        try{
+            const r = await axios.post(`${CFG.INFIP_URL}/v1/images/generations`,
+                { model, prompt, n, size, response_format:'url', quality, style },
+                { headers:_iHdr(), timeout:CFG.TIMEOUT }
+            );
+            if(r.status === 200 && r.data?.data?.length){ 
+                const urls = r.data.data.map(d => d.url); 
+                _iCache.set(ck, {urls, ts:Date.now()}); 
+                return urls; 
+            }
+        }catch(e){ 
+            Limiter.err(); 
+            if(i < CFG.RETRIES-1) await sleep(1000*(i+1)); 
+        }
+    }
+    return [];
+};
+// ==============================================================================
+// 8. RUNTIME STATE
+// ==============================================================================
+const State = {
+    dmActive: false,
+    dmGem: null,
+    chats: new Map(),
+    targets: new Map(),
+    stalkers: new Map(),
+    dmSessions: new Map(),
+    autoEnhance: false,
+    PERSONA: 'You are a witty, slightly sarcastic but genuinely helpful person on WhatsApp. Keep replies short and casual. Always use WhatsApp markdown (*bold*, _italic_, ~strike~, ```code```) for emphasis and structure. Never say you are an AI. Use conversation history to stay consistent.',
+    
+    /** Normalizes JIDs to fix the stalk/target matching issue by removing device IDs and ensuring standard domain */
+    norm(jid) {
+        if (!jid || typeof jid !== 'string') return '';
+        return jid.split(':')[0].split('@')[0] + '@s.whatsapp.net';
+    },
+
+    addHist(ctx, role, txt) {
+        if (!ctx.history) ctx.history = [];
+        const t = new Date().toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit' });
+        ctx.history.push(`[${t}] ${role}: ${txt}`);
+        if (ctx.history.length > CFG.MAX_HIST) ctx.history = ctx.history.slice(-CFG.MAX_HIST);
+    },
+
+    buildPrompt(sys, hist, input) {
+        return `SYSTEM:\n${sys}\n\n--- HISTORY ---\n${hist.join('\n')}\n---\nUSER: ${input}\nREPLY (Format with WhatsApp markdown):`;
     }
 };
 
 // ==============================================================================
-// 7. MEDIA HANDLING — Vision & Uploads
+// 9. MESSAGE HELPERS
 // ==============================================================================
 
-const uploadImgBB = async (filePath) => {
-    if (!fs.existsSync(filePath)) return null;
-    const FormData = require('form-data');
-    const form = new FormData();
-    form.append('image', fs.createReadStream(filePath));
-
+/** Send quoted thinking stub, return sent msg for later edit */
+const thinking = async (Gifted, from, mek, label = '⏳ _thinking…_') => {
     try {
-        const res = await axios.post(
-            `https://api.imgbb.com/1/upload?key=${CFG.IMGBB_KEY}&expiration=600`,
-            form,
-            { headers: form.getHeaders(), timeout: 30000 }
-        );
-        return res.data?.data?.url || null;
+        return await Gifted.sendMessage(from, { text: label }, { quoted: mek });
     } catch (e) {
-        console.error('[AIGems] ImgBB Upload Error:', e.message);
         return null;
     }
 };
 
-// ==============================================================================
-// 8. IMAGE GENERATION — Infip High-Speed Pipeline
-// ==============================================================================
-
-let _activeInfipKey = CFG.INFIP_POOL[Math.floor(Math.random() * CFG.INFIP_POOL.length)];
-let _infipValidated = false;
-
-const rotateInfipKey = () => {
-    _activeInfipKey = CFG.INFIP_POOL[Math.floor(Math.random() * CFG.INFIP_POOL.length)];
-    _infipValidated = false;
-};
-
-const ensureInfip = async () => {
-    if (_infipValidated) return true;
+/** Edit a message with fallback: delete + resend */
+const editMsg = async (Gifted, sentMsg, newText) => {
+    if (!sentMsg?.key) return;
+    const remoteJid = sentMsg.key.remoteJid;
     try {
-        const check = await axios.get(`${CFG.INFIP_URL}/v1/models`, {
-            headers: { Authorization: `Bearer ${_activeInfipKey}` },
-            timeout: 5000
-        });
-        if (check.status === 200) {
-            _infipValidated = true;
-            return true;
-        }
-    } catch (e) {
-        rotateInfipKey();
-    }
-    return false;
-};
-
-const generateImage = async (prompt, opts = {}) => {
-    const model = opts.model || CFG.IMG_MODEL;
-    const size = opts.size || CFG.IMG_SIZE;
-    const count = Math.min(opts.count || CFG.IMG_COUNT, 4);
-
-    if (!Limiter.check()) return [];
-    await ensureInfip();
-    Limiter.hit('img');
-
+        // Attempt native WhatsApp message edit
+        await Gifted.sendMessage(remoteJid, { text: newText, edit: sentMsg.key });
+        return;
+    } catch (e1) {}
+    
+    // Fallback strategy: delete old → wait → send fresh message
     try {
-        const res = await axios.post(
-            `${CFG.INFIP_URL}/v1/images/generations`,
-            {
-                model,
-                prompt,
-                n: count,
-                size: size,
-                response_format: 'url',
-                quality: opts.quality || CFG.IMG_QUALITY,
-                style: opts.style || CFG.IMG_STYLE
-            },
-            {
-                headers: { 
-                    Authorization: `Bearer ${_activeInfipKey}`,
-                    'Content-Type': 'application/json'
-                },
-                timeout: CFG.TIMEOUT
-            }
-        );
-
-        if (res.status === 200 && res.data?.data) {
-            return res.data.data.map(d => d.url);
-        }
-    } catch (e) {
-        console.error('[AIGems] Image Gen Error:', e.message);
-        Limiter.err();
+        await Gifted.sendMessage(remoteJid, { delete: sentMsg.key });
+    } catch (e) {}
+    await sleep(300);
+    try {
+        await Gifted.sendMessage(remoteJid, { text: newText });
+    } catch (e2) {
+        console.error('[AIGems] editMsg failed:', e2.message);
     }
-    return [];
 };
 
-// ==============================================================================
-// 9. MESSAGE HELPERS — UX & Edits
-// ==============================================================================
-
-const UI = {
-    /** Show typing/thinking state */
-    async think(Gifted, from, mek, msg = '⏳ _brainstorming..._') {
-        try {
-            return await Gifted.sendMessage(from, { text: msg }, { quoted: mek });
-        } catch (e) { return null; }
-    },
-
-    /** Update existing message or resend if failed */
-    async update(Gifted, targetMsg, newText) {
-        if (!targetMsg?.key) return;
-        try {
-            await Gifted.sendMessage(targetMsg.key.remoteJid, { 
-                text: newText, 
-                edit: targetMsg.key 
-            });
-        } catch (e) {
-            try {
-                await Gifted.sendMessage(targetMsg.key.remoteJid, { text: newText });
-            } catch (err) {}
-        }
-    },
-
-    /** Delete message */
-    async delete(Gifted, key) {
-        try {
+/** Delete message silently */
+const del = async (Gifted, key) => {
+    try {
+        if (key && key.remoteJid) {
             await Gifted.sendMessage(key.remoteJid, { delete: key });
-        } catch (e) {}
-    },
-
-    /** Robust Image Dispatch */
-    async sendArt(Gifted, from, url, caption, quoted) {
-        try {
-            await Gifted.sendMessage(from, { 
-                image: { url }, 
-                caption: caption 
-            }, { quoted });
-            return true;
-        } catch (e) {
-            await Gifted.sendMessage(from, { 
-                text: `🎨 *Generation Success*\n\nPrompt: ${caption}\n\nLink: ${url}` 
-            }, { quoted });
-            return false;
         }
+    } catch (_) {}
+};
+
+/** Send image with URL-text fallback in case of media upload failure */
+const sendImg = async (Gifted, from, url, caption, mek) => {
+    try {
+        await Gifted.sendMessage(from, { image: { url }, caption }, { quoted: mek });
+        return true;
+    } catch (e) {
+        try {
+            await Gifted.sendMessage(from, { text: `🎨 ${caption}\n\n🔗 ${url}` }, { quoted: mek });
+        } catch (_) {}
+        return false;
     }
 };
 
 // ==============================================================================
-// 10. BOT COMMANDS — .gai (Control & Direct Interaction)
+// 10.  .gem  — PERSONA SYSTEM
 // ==============================================================================
-
 gmd({
-    pattern: 'gai',
-    cmdname: 'gai',
-    category: 'ai',
-    desc: 'Master AI control and querying.',
-    react: '🧠'
-}, async (from, Gifted, context) => {
-    const { mek, q, reply, isSuperUser, react } = context;
-    if (!isSuperUser) return reply('❌ *Access Denied.* Restricted to Bot Admin.');
+    pattern:'gem', cmdname:'gem', aliases:['gems','persona'],
+    category:'ai', desc:'AI persona vault. .gem help for all sub-commands.', react:'💎', filename:__filename
+}, async (from, Gifted, conText) => {
+    const { mek, q='', reply, isSuperUser } = conText;
+    if (!isSuperUser) return reply('❌ Owner only command.');
+    const parts=q.trim().split(/\s+/), cmd=parts[0]?.toLowerCase()||'help', rest=parts.slice(1);
 
-    const input = q.trim();
-    if (!input) return reply('❓ *Usage:*\n.gai <ask anything>\n.gai chat (start AI in this group)\n.gai stop (stop AI here)\n.gai status (view metrics)');
-
-    const args = input.split(' ');
-    const subCmd = args[0].toLowerCase();
-
-    // -- MODE: CHAT (Group-wide AI)
-    if (subCmd === 'chat') {
-        const gemName = args[1] || 'default';
-        const gemContent = Gems.get(gemName) || State.PERSONA;
-        State.chats.set(from, {
-            gem: gemContent,
-            history: [],
-            gemName: gemName
-        });
-        return reply(`⚔️ *AI Mode: ACTIVE*\nGroup: ${from}\nPersona: \`${gemName}\`\n\n_I will now respond to every message in this chat._`);
+    if (cmd==='create') {
+        if(rest.length<2) return reply('📝 Usage: `.gem create <name> <persona prompt>`');
+        const [name,...pArr]=rest, content=pArr.join(' ');
+        return Gems.save(name,content)
+            ? reply(`💎 *Gem Saved*\n*Name:* \`${name}\`\n*Preview:* _${content.slice(0,120)}_`)
+            : reply('❌ Database write error.');
     }
-
-    // -- MODE: TARGET (Single User in current chat)
-    if (subCmd === 'target') {
-        const targetNum = args[1]?.replace(/[^0-9]/g, '');
-        if (!targetNum) return reply('📝 `.gai target <number> [gem]`');
-        const jid = targetNum + '@s.whatsapp.net';
-        const gemName = args[2] || 'default';
-        State.targets.set(jid, {
-            gem: Gems.get(gemName) || State.PERSONA,
-            history: [],
-            chatId: from,
-            gemName: gemName
-        });
-        return reply(`🎯 *Target Locked: @${targetNum}*\nI will only respond to this user in this group.`);
+    if (cmd==='gen') {
+        const topic=rest.join(' ');
+        if(!topic) return reply('📝 Usage: `.gem gen <topic>`  e.g. `.gem gen sarcastic gamer`');
+        const stub=await thinking(Gifted,from,mek,`🔮 _Forging "${topic}" persona…_`);
+        const {text,err}=await askAI(`Create a detailed WhatsApp persona system prompt for: ${topic}.\nInclude personality, speaking style, slang, emoji habits.\nReturn ONLY the raw system prompt text.`);
+        if(err) return editMsg(Gifted,stub,`❌ ${text}`);
+        const name=(rest[0]||'gem').toLowerCase().slice(0,12)+'_ai';
+        Gems.save(name,text);
+        return editMsg(Gifted,stub,`✨ *Gem Created*\n*Name:* \`${name}\`\n*Preview:* _${text.slice(0,150)}_\n\n_Activate:_ \`.gem use ${name}\``);
     }
-
-    // -- MODE: STALK (Global User Tracking)
-    if (subCmd === 'stalk') {
-        const stalkNum = args[1]?.replace(/[^0-9]/g, '');
-        if (!stalkNum) return reply('📝 `.gai stalk <number> [gem]`');
-        const jid = stalkNum + '@s.whatsapp.net';
-        const gemName = args[2] || 'default';
-        State.stalkers.set(jid, {
-            gem: Gems.get(gemName) || State.PERSONA,
-            history: [],
-            gemName: gemName
-        });
-        return reply(`🕵️ *Global Stalk: @${stalkNum}*\nI will follow this user into any group we share.`);
+    if (cmd==='analyze') {
+        const quoted=mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        if(!quoted) return reply('📝 *Reply to a message* then run `.gem analyze`');
+        const sample=quoted.conversation||quoted.extendedTextMessage?.text||'[no text]';
+        const stub=await thinking(Gifted,from,mek,'🕵️ _Cloning writing style…_');
+        const {text,err}=await askAI(`Analyze this WhatsApp message and build a system prompt to clone this exact style and tone:\n"${sample}"\nReturn ONLY the system prompt.`);
+        if(err) return editMsg(Gifted,stub,`❌ ${text}`);
+        const name=`clone_${Date.now().toString(36)}`;
+        Gems.save(name,text);
+        return editMsg(Gifted,stub,`🧬 *Clone Created*\n*Name:* \`${name}\`\n_Activate:_ \`.gem use ${name}\``);
     }
+    if (cmd==='remix') {
+        const [gemName,...tw]=rest; const tweak=tw.join(' ');
+        if(!gemName||!tweak) return reply('📝 Usage: `.gem remix <name> <modification instruction>`');
+        const base=Gems.get(gemName);
+        if(!base) return reply(`❌ Gem \`${gemName}\` not found.`);
+        const stub=await thinking(Gifted,from,mek,`🔀 _Remixing "${gemName}"…_`);
+        const {text,err}=await askAI(`Modify this system prompt per the instruction. Return ONLY the updated prompt.\n\nOriginal:\n${base}\n\nInstruction: ${tweak}`);
+        if(err) return editMsg(Gifted,stub,`❌ ${text}`);
+        const newName=`${gemName}_remix`;
+        Gems.save(newName,text);
+        return editMsg(Gifted,stub,`🔀 *Remixed*\n\`${gemName}\` → \`${newName}\``);
+    }
+    if (cmd==='list') {
+        const list=Gems.list();
+        if(!list.length) return reply('📚 No gems found.\n`.gem gen <topic>` or `.gem create <n> <prompt>`');
+        return reply(`📚 *Gems Vault (${list.length})*\n\n${list.map((g,i)=>`${i+1}. 💎 \`${g}\``).join('\n')}\n\n_Use_ \`.gem use <name>\``);
+    }
+    if (cmd==='view') {
+        const c=Gems.get(rest[0]||'');
+        if(!rest[0]) return reply('📝 Usage: `.gem view <name>`');
+        if(!c) return reply(`❌ Gem \`${rest[0]}\` not found.`);
+        return reply(`💎 *PERSONA: ${rest[0].toUpperCase()}*\n\n${c}`);
+    }
+    if (cmd==='use') {
+        if(!rest[0]) return reply('📝 Usage: `.gem use <name>`');
+        const c=Gems.get(rest[0]);
+        if(!c) return reply(`❌ Gem \`${rest[0]}\` not found.`);
+        State.dmGem=c;
+        return reply(`✅ *DM Persona set to:* \`${rest[0]}\`\nEnable AI with \`.gai dm on\``);
+    }
+    if (cmd==='delete'||cmd==='del') {
+        if(!rest[0]) return reply('📝 Usage: `.gem delete <name>`');
+        return Gems.del(rest[0]) ? reply(`🗑️ Gem \`${rest[0]}\` deleted.`) : reply(`❌ Not found.`);
+    }
+    return reply(
+        `💎 *GEM — Persona Vault*\n\n`+
+        `• \`.gem create <n> <prompt>\` - Manual save\n`+
+        `• \`.gem gen <topic>\` — AI creates persona\n`+
+        `• \`.gem analyze\` — Clone from quoted msg\n`+
+        `• \`.gem remix <n> <tweak>\` - Modify existing\n`+
+        `• \`.gem list\` - View all gems\n`+
+        `• \`.gem view <n>\` - Read prompt\n`+
+        `• \`.gem use <n>\` - Set as active DM persona\n`+
+        `• \`.gem delete <n>\` - Remove gem`
+    );
+});
+// ==============================================================================
+// 11.  .gai  — ONE-SHOT AI + AUTO-REPLY CONTROL
+// ==============================================================================
+gmd({
+    pattern:'gai', cmdname:'gai', aliases:['ai','ask','brain'],
+    category:'ai', desc:'AI assistant & auto-reply control. .gai help', react:'🧠', filename:__filename
+}, async (from, Gifted, conText) => {
+    const { mek, q='', reply, react, isSuperUser } = conText;
+    if (!isSuperUser) return reply('❌ Owner only command.');
+    const parts=q.trim().split(/\s+/), cmd=parts[0]?.toLowerCase()||'', rest=parts.slice(1), second=rest[0]?.toLowerCase()||'';
 
-    // -- MODE: STOP
-    if (subCmd === 'stop') {
-        if (args[1] === 'all') {
-            State.chats.clear();
-            State.targets.clear();
-            State.stalkers.clear();
-            return reply('🛑 *System Halted.* All active AI sessions cleared.');
+    if (cmd==='dm') {
+        if(second==='on')  { State.dmActive=true;  return reply(`📨 *DM Auto-Pilot: ✅ ON*\nPersona: ${State.dmGem?'Custom gem':'Default'}`); }
+        if(second==='off') { State.dmActive=false; return reply('📨 *DM Auto-Pilot: ❌ OFF*'); }
+        return reply(`📨 DM Auto-Pilot: ${State.dmActive?'✅ ON':'❌ OFF'}`);
+    }
+    if (cmd==='chat') {
+        const gemName=second||'default';
+        const gemTxt=(gemName!=='default'?Gems.get(gemName):null)||State.PERSONA;
+        State.chats.set(from,{gem:gemTxt,history:[],gemName});
+        return reply(`⚔️ *Chat AI Active*\nGem: *${gemName}* — replying to everyone here.`);
+    }
+    if (cmd==='target'||cmd==='bot') {
+        const num=rest[0]?.replace(/[^0-9]/g,'');
+        if(!num) return reply('📝 `.gai target <number> [gem]`');
+        const tjid=num+'@s.whatsapp.net', gemName=rest[1]||'default';
+        const gemTxt=(gemName!=='default'?Gems.get(gemName):null)||State.PERSONA;
+        State.targets.set(tjid,{gem:gemTxt,history:[],chatId:from,gemName});
+        return reply(`🤖 *Target Locked*\n@${num} | Gem: *${gemName}*`);
+    }
+    if (cmd==='stalk') {
+        const num=rest[0]?.replace(/[^0-9]/g,'');
+        if(!num) return reply('📝 `.gai stalk <number> [gem]`');
+        const tjid=num+'@s.whatsapp.net', gemName=rest[1]||'default';
+        const gemTxt=(gemName!=='default'?Gems.get(gemName):null)||State.PERSONA;
+        State.stalkers.set(tjid,{gem:gemTxt,history:[],gemName});
+        return reply(`🌍 *Global Stalker*\n@${num} everywhere | Gem: *${gemName}*`);
+    }
+    if (cmd==='stop') {
+        if(second==='all'){
+            State.dmActive=false; State.chats.clear(); State.targets.clear();
+            State.stalkers.clear(); State.dmSessions.clear();
+            return reply('☢️ *ALL AI OFF*\nDM: OFF | Chats: 0 | Targets: 0 | Stalkers: 0');
         }
         State.chats.delete(from);
-        return reply('📴 *AI Disabled* for this chat.');
+        return reply('🛑 AI stopped here.\n_Stop all:_ `.gai stop all`');
+    }
+    if (cmd==='wipe') {
+        const sess=State.chats.get(from);
+        if(sess){ sess.history=[]; return reply('🧠 _Memory wiped!_'); }
+        return reply('ℹ️ No active session here.');
+    }
+    if (cmd==='status') {
+        const s=Limiter.stats(), cb=CB.open()?`🔴 TRIPPED (${CB.fails}/${CB.THRESH})`:`🟢 OK`;
+        let out=`📊 *AI STATUS*\nDM:${State.dmActive?'✅':'❌'} Chats:${State.chats.size} Targets:${State.targets.size} Stalkers:${State.stalkers.size}\n${s.rpm}rpm ${s.rph}rph | AI:${s.ai} Img:${s.img} Err:${s.err}\nCircuit: ${cb}`;
+        if(State.chats.size){ out+='\n*Sessions:*'; State.chats.forEach((d,c)=>{out+=`\n• ${c.split('@')[0]}: ${d.history.length}t (${d.gemName})`;}); }
+        return reply(out);
+    }
+    if (cmd==='summary') {
+        const sess=State.chats.get(from);
+        if(!sess?.history?.length) return reply('ℹ️ No history here. Start a session with `.gai chat` first.');
+        const stub=await thinking(Gifted,from,mek,'📝 _Summarising…_');
+        const {text,err}=await askAI(`Summarise this WhatsApp chat in bullet points:\n\n${sess.history.join('\n')}`);
+        return editMsg(Gifted,stub,err?`❌ ${text}`:`📝 *Summary*\n\n${text}`);
+    }
+    if (cmd==='help') {
+        return reply(
+            `🧠 *GAI — AI CONTROL*\n\n`+
+            `*Quick ask:* \`.gai <question>\`\n\n`+
+            `*Modes:*\n• \`.gai dm on/off\` - Auto reply in DMs\n• \`.gai chat [gem]\` - Reply to everyone in this chat\n• \`.gai target <num> [gem]\` - Reply to num in this chat\n• \`.gai stalk <num> [gem]\` - Reply to num globally\n\n`+
+            `*Control:*\n• \`.gai stop\` / \`.gai stop all\`\n• \`.gai wipe\` - Reset chat memory\n• \`.gai summary\` - Recap history\n• \`.gai status\` - Performance metrics`
+        );
     }
 
-    // -- MODE: STATUS
-    if (subCmd === 'status') {
-        const stats = Limiter.stats();
-        const cbStatus = CB.open() ? '🔴 TRIPPED' : '🟢 CLOSED';
-        return reply(`📊 *AI Engine Status*\n\n` +
-            `• *Rate Limit:* ${stats.rpm}/${CFG.MAX_RPM} RPM\n` +
-            `• *Daily Total:* ${stats.ai} calls\n` +
-            `• *Error Rate:* ${stats.err}\n` +
-            `• *Circuit:* ${cbStatus}\n` +
-            `• *Active Chats:* ${State.chats.size}\n` +
-            `• *Targets:* ${State.targets.size}\n` +
-            `• *Stalkers:* ${State.stalkers.size}`);
+    // ── ONE-SHOT ASK ──────────────────────────────────────────────────────────
+    const question = q.trim();
+    if (!question) return reply('📝 `.gai <question>`  or  `.gai help`');
+
+    let imgUrls=[];
+    const quotedMsg=mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+    if (quotedMsg?.imageMessage) {
+        await react('👁️');
+        try {
+            const tp=await Gifted.downloadAndSaveMediaMessage(quotedMsg.imageMessage,`tmp_gai_${Date.now()}`);
+            if(tp){ const url=await uploadImgBB(tp); if(url) imgUrls.push(url); try{fs.unlinkSync(tp);}catch(_){} }
+        } catch(e){ console.error('[AIGems] vision:', e.message); }
     }
 
-    // -- MODE: ONE-SHOT ASK
-    await react('🧠');
-    const thinkingMsg = await UI.think(Gifted, from, mek);
-    
-    // Handle quoted context or images
-    let promptFinal = input;
-    const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-    const contextText = quoted?.conversation || quoted?.extendedTextMessage?.text;
-    if (contextText) promptFinal = `Reference Context:\n"${contextText}"\n\nUser Question: ${input}`;
-
-    const { text, err } = await askAI(promptFinal);
-    return await UI.update(Gifted, thinkingMsg, text);
+    const stub=await thinking(Gifted,from,mek,'🧠 _thinking…_');
+    let finalPrompt=question;
+    const ctx=quotedMsg?.conversation||quotedMsg?.extendedTextMessage?.text;
+    if(ctx) finalPrompt=`Context:\n"${ctx}"\n\nQuestion: ${question}`;
+    const {text,err}=await askAI(finalPrompt,imgUrls);
+    return editMsg(Gifted,stub, err?`❌ ${text}`:text);
 });
 
 // ==============================================================================
-// 11. IMAGE COMMANDS — .img (Creative Generation)
+// 12.  .img  — IMAGE GENERATION
 // ==============================================================================
-
 gmd({
-    pattern: 'img',
-    cmdname: 'img',
-    category: 'ai',
-    desc: 'AI image generator.',
-    react: '🎨'
-}, async (from, Gifted, context) => {
-    const { mek, q, reply, isSuperUser, react } = context;
-    if (!isSuperUser) return reply('❌ *Owner Only.*');
+    pattern:'img', cmdname:'img', aliases:['imagine','genimg','drawai'],
+    category:'ai', desc:'AI image generation. .img help for sub-commands.', react:'🎨', filename:__filename
+}, async (from, Gifted, conText) => {
+    const { mek, q='', reply, react, isSuperUser } = conText;
+    if (!isSuperUser) return reply('❌ Owner only command.');
+    const parts=q.trim().split(/\s+/), cmd=parts[0]?.toLowerCase()||'help', rest=parts.slice(1);
+    const KNOWN=['gen','surprise','chaos','models','config','enhance','setup','random','cache','help'];
 
-    const prompt = q.trim();
-    if (!prompt) return reply('🎨 *Example:* `.img a neon cyberpunk cat in rain`');
+    const doGen=async(prompt,stub)=>{
+        const urls=await generateImage(prompt);
+        if(!urls.length) return editMsg(Gifted,stub,'❌ Generation failed. Try `.img setup` or `.img config <model>`.');
+        await del(Gifted,stub.key);
+        await sendImg(Gifted,from,urls[0],`🎨 _${prompt.slice(0,200)}_\n🤖 \`${CFG.IMG_MODEL}\``,mek);
+        for(const u of urls.slice(1)) await sendImg(Gifted,from,u,'🎨 _Variation_',mek);
+    };
 
-    await react('🎨');
-    const loader = await UI.think(Gifted, from, mek, '🎨 _Painting your imagination..._');
-    
-    const urls = await generateImage(prompt);
-    if (!urls || urls.length === 0) {
-        return await UI.update(Gifted, loader, '❌ *Generation Failed.* API busy or prompt blocked.');
+    if(cmd==='gen'||(!KNOWN.includes(cmd)&&q)){
+        const prompt=cmd==='gen'?rest.join(' '):q;
+        if(!prompt.trim()) return reply('📝 `.img gen <prompt>`');
+        await react('🎨');
+        return doGen(prompt, await thinking(Gifted,from,mek,'🎨 _Generating…_'));
     }
-
-    await UI.delete(Gifted, loader.key);
-    for (let i = 0; i < urls.length; i++) {
-        await UI.sendArt(Gifted, from, urls[i], i === 0 ? prompt : `Variation ${i+1}`, mek);
+    if(cmd==='surprise'){
+        const hint=rest.join(' ');
+        const stub=await thinking(Gifted,from,mek,`🎲 _Dreaming${hint?` (${hint})`:''}…_`);
+        const {text:dreamt,err}=await askAI(`Generate a highly detailed creative image prompt${hint?` themed: "${hint}"`:''}.\nReturn ONLY the prompt.`);
+        if(err) return editMsg(Gifted,stub,`❌ ${dreamt}`);
+        await editMsg(Gifted,stub,`🎲 _Visualising:_ "${dreamt.slice(0,80)}…"`);
+        const urls=await generateImage(dreamt);
+        if(!urls.length) return editMsg(Gifted,stub,'❌ Failed. Retry.');
+        await del(Gifted,stub.key);
+        return sendImg(Gifted,from,urls[0],`🎲 *Surprise!*\n💭 _${dreamt.slice(0,200)}_`,mek);
     }
+    if(cmd==='chaos'){
+        const free=Object.keys(CFG.IMG_MDLS).filter(k=>CFG.IMG_MDLS[k].tier==='free');
+        CFG.IMG_MODEL=free[Math.floor(Math.random()*free.length)];
+        CFG.IMG_SIZE=['1024x1024','1792x1024','1024x1792'][Math.floor(Math.random()*3)];
+        CFG.IMG_QUALITY=Math.random()>.5?'hd':'standard'; CFG.IMG_STYLE=Math.random()>.5?'vivid':'natural';
+        const stub=await thinking(Gifted,from,mek,`🌪️ *CHAOS* — ${CFG.IMG_MODEL} | ${CFG.IMG_SIZE}`);
+        const {text:chaos}=await askAI(['Generate a bizarre surreal image prompt defying logic. Return ONLY prompt.','Create an absurd scene with impossible physics. Return ONLY prompt.','Describe the most chaotic image imaginable. Return ONLY prompt.'][Math.floor(Math.random()*3)]);
+        const fp=chaos||'melting clocks cybernetic forest neon rain 8k';
+        const urls=await generateImage(fp);
+        if(!urls.length) return editMsg(Gifted,stub,'❌ Chaos failed. Retry.');
+        await del(Gifted,stub.key);
+        return sendImg(Gifted,from,urls[0],`🌪️ *CHAOS*\n💭 _${fp.slice(0,200)}_\n⚙️ \`${CFG.IMG_MODEL}\` \`${CFG.IMG_SIZE}\``,mek);
+    }
+    if(cmd==='models'){
+        const lines=Object.entries(CFG.IMG_MDLS).map(([id,m])=>`${m.tier==='pro'?'👑':'🆓'} \`${id}\` — ${m.desc}`).join('\n');
+        return reply(`📋 *Models*\n\n${lines}\n\n*Active:* \`${CFG.IMG_MODEL}\`\nSwitch: \`.img config <model>\``);
+    }
+    if(cmd==='config'){
+        if(!rest[0]) return reply(`⚙️ *Config*\nModel:\`${CFG.IMG_MODEL}\` Size:\`${CFG.IMG_SIZE}\` Count:${CFG.IMG_COUNT} Quality:\`${CFG.IMG_QUALITY}\` Style:\`${CFG.IMG_STYLE}\`\n\n📝 \`.img config <model> [size] [n] [quality] [style]\``);
+        const [model,size,count,quality,style]=rest;
+        if(model&&!CFG.IMG_MDLS[model]) return reply(`❌ Model \`${model}\` unknown. Run \`.img models\``);
+        if(model) CFG.IMG_MODEL=model; if(size) CFG.IMG_SIZE=size;
+        if(count) CFG.IMG_COUNT=Math.min(parseInt(count)||1,4);
+        if(quality) CFG.IMG_QUALITY=quality; if(style) CFG.IMG_STYLE=style;
+        return reply(`✅ Model:\`${CFG.IMG_MODEL}\` Size:\`${CFG.IMG_SIZE}\` Q:\`${CFG.IMG_QUALITY}\` Style:\`${CFG.IMG_STYLE}\``);
+    }
+    if(cmd==='enhance'){
+        const p=rest.join(' '); if(!p) return reply('📝 `.img enhance <prompt>`');
+        const stub=await thinking(Gifted,from,mek,'🧠 _Enhancing…_');
+        const {text,err}=await askAI(`Enhance this image prompt — richer details, same intent. Return ONLY the prompt.\n\n${p}`);
+        return editMsg(Gifted,stub,err?`❌ ${text}`:`✨ *Enhanced*\n\n*Original:* ${p}\n\n*Enhanced:* ${text}`);
+    }
+    if(cmd==='random'){
+        const free=Object.keys(CFG.IMG_MDLS).filter(k=>CFG.IMG_MDLS[k].tier==='free');
+        CFG.IMG_MODEL=free[Math.floor(Math.random()*free.length)];
+        CFG.IMG_SIZE=['1024x1024','1792x1024','1024x1792'][Math.floor(Math.random()*3)];
+        CFG.IMG_QUALITY=Math.random()>.5?'hd':'standard'; CFG.IMG_STYLE=Math.random()>.5?'vivid':'natural';
+        return reply(`🎲 *Randomized*\nModel:\`${CFG.IMG_MODEL}\` Size:\`${CFG.IMG_SIZE}\` Q:\`${CFG.IMG_QUALITY}\` Style:\`${CFG.IMG_STYLE}\``);
+    }
+    if(cmd==='setup'){
+        const stub=await thinking(Gifted,from,mek,'🔧 _Validating Infip…_');
+        _iOk=false; const ok=await ensureInfip();
+        return editMsg(Gifted,stub,ok?`✅ *Infip Ready*\nKey: \`${_iKey.slice(0,20)}…\``:`❌ *Setup Failed* — all keys invalid`);
+    }
+    if(cmd==='cache'){ _iCache.clear(); return reply('🗑️ Cache cleared.'); }
+    return reply(`🎨 *IMG COMMANDS*\n• \`.img gen <prompt>\`\n• \`.img surprise [topic]\`\n• \`.img chaos\`\n• \`.img enhance <prompt>\`\n• \`.img models\`\n• \`.img config [model] [size] [n] [quality] [style]\`\n• \`.img random\`\n• \`.img setup\`\n• \`.img cache\`\n\n*Active:* \`${CFG.IMG_MODEL}\` @ \`${CFG.IMG_SIZE}\``);
 });
 
 // ==============================================================================
-// 12. MESSAGE WATCHER — The Engine Room (Stalk/Target Logic)
+// 13.  .apimon  — API MONITOR
 // ==============================================================================
+gmd({
+    pattern:'apimon', cmdname:'apimon', aliases:['apistat','aihealth'],
+    category:'ai', desc:'AI API usage, health check and circuit breaker.', react:'📊', filename:__filename
+}, async (from, Gifted, conText) => {
+    const { mek, q='', reply, isSuperUser } = conText;
+    if (!isSuperUser) return reply('❌ Owner only.');
+    const parts=q.trim().split(/\s+/), cmd=parts[0]?.toLowerCase()||'status';
+    if(cmd==='status'||!q.trim()){
+        const s=Limiter.stats(), cb=CB.open()?'🔴 TRIPPED':`🟢 OK (${CB.fails}/${CB.THRESH})`;
+        const bar=(v,max,l=12)=>'█'.repeat(Math.min(l,Math.round(v/max*l)))+'░'.repeat(Math.max(0,l-Math.round(v/max*l)));
+        return reply(`📊 *API Status*\n1m: \`${bar(s.rpm,CFG.MAX_RPM)}\` ${s.rpm}/${CFG.MAX_RPM}\n1h: \`${bar(s.rph,CFG.MAX_RPH)}\` ${s.rph}/${CFG.MAX_RPH}\nToday: AI:${s.ai} Img:${s.img} Err:${s.err}\nCircuit: ${cb}`);
+    }
+    if(cmd==='health'){
+        const stub=await thinking(Gifted,from,mek,'🔍 _Health check…_');
+        const lines=[];
+        const {text:tr,err:te}=await askAI('Reply ONLY with the word: HEALTH_OK');
+        lines.push((!te&&tr.includes('HEALTH_OK'))?'✅ QuillBot: Healthy':`⚠️ QuillBot: ${te?'Error':'Unexpected'} — ${tr.slice(0,60)}`);
+        lines.push(CB.open()?'🔴 Circuit: TRIPPED':'✅ Circuit: Closed');
+        lines.push(Limiter.check()?'✅ Rate Limit: Clear':'⚠️ Rate Limit: Active');
+        lines.push(_iOk?'✅ Infip: Validated':'⚠️ Infip: Not tested');
+        try{Gems.list();lines.push('✅ DB: OK');}catch(e){lines.push('❌ DB: Error');}
+        return editMsg(Gifted,stub,`🔍 *Health Check*\n\n${lines.join('\n')}`);
+    }
+    if(cmd==='reset'){
+        const type=parts[1]?.toLowerCase();
+        if(type==='circuit'){ CB.reset(); return reply('✅ Circuit breaker reset.'); }
+        if(type==='daily'){ Limiter.daily={ai:0,img:0,err:0,day:new Date().toDateString()}; return reply('✅ Daily stats reset.'); }
+        return reply('📝 `.apimon reset <circuit|daily>`');
+    }
+    return reply(`📊 *API Monitor*\n• \`.apimon status\`\n• \`.apimon health\`\n• \`.apimon reset <circuit|daily>\``);
+});
 
-const initWatcher = (Gifted) => {
-    if (!Gifted?.ev) return;
+// ==============================================================================
+// 14.  .autoenhance  — TOGGLE AUTO-CORRECTION
+// ==============================================================================
+gmd({
+    pattern:'autoenhance', cmdname:'autoenhance', aliases:['smartedit','autoedit'],
+    category:'ai', desc:'Toggle AI auto-correction of your outgoing messages.', react:'✍️', filename:__filename
+}, async (from, Gifted, conText) => {
+    const { q='', reply, isSuperUser } = conText;
+    if (!isSuperUser) return reply('❌ Owner only.');
+    const a=q.trim().toLowerCase();
+    if(a==='on')  { State.autoEnhance=true;  return reply('✍️ *Auto-Enhance: ON*\nYour messages will be silently AI-improved.'); }
+    if(a==='off') { State.autoEnhance=false; return reply('✍️ *Auto-Enhance: OFF*'); }
+    return reply(`✍️ *Auto-Enhance:* ${State.autoEnhance?'✅ ON':'❌ OFF'}\n\nFixes grammar/spelling silently after you send.\n\n• \`.autoenhance on\`\n• \`.autoenhance off\``);
+});
+// ==============================================================================
+// 15.  .aitranslate  — TRANSLATION
+// ==============================================================================
+gmd({
+    pattern:'aitranslate', cmdname:'aitranslate', aliases:['gitrans','aitrans'],
+    category:'ai', desc:'AI translation. Usage: .aitranslate <language> <text>', react:'🌐', filename:__filename
+}, async (from, Gifted, conText) => {
+    const { mek, q='', reply, isSuperUser } = conText;
+    if (!isSuperUser) return reply('❌ Owner only.');
+    const parts=q.trim().split(/\s+/), lang=parts[0], text=parts.slice(1).join(' ');
+    if(!lang||!text) return reply('📝 `.aitranslate <language> <text>`\nExample: `.aitranslate Spanish Good morning`');
+    const stub=await thinking(Gifted,from,mek,`🌐 _Translating to ${lang}…_`);
+    const {text:out,err}=await askAI(`Translate to ${lang}. Return ONLY the translated text.\n\nText: ${text}`);
+    return editMsg(Gifted,stub,err?`❌ ${out}`:`🌐 *→ ${lang}*\n\n📝 ${text}\n\n🔄 ${out}`);
+});
 
-    Gifted.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify' && type !== 'append') return;
+// ==============================================================================
+// 16.  .aiwrite  — CREATIVE WRITING
+// ==============================================================================
+gmd({
+    pattern:'aiwrite', cmdname:'aiwrite', aliases:['giwrite','compose','draft'],
+    category:'ai', desc:'AI creative writing (roast, caption, story, email, etc.)', react:'✍️', filename:__filename
+}, async (from, Gifted, conText) => {
+    const { mek, q='', reply, isSuperUser } = conText;
+    if (!isSuperUser) return reply('❌ Owner only.');
+    const parts=q.trim().split(/\s+/), type=parts[0]?.toLowerCase()||'', topic=parts.slice(1).join(' ');
+    const TYPES={
+        message:`Write a natural short WhatsApp message about: ${topic}.`,
+        roast  :`Write a playful funny roast about: ${topic}. Friendly tone.`,
+        caption:`Write 3 creative captions with emojis for: ${topic}.`,
+        essay  :`Write a structured essay about: ${topic}.`,
+        story  :`Write a gripping short story about: ${topic}.`,
+        bio    :`Write a punchy memorable bio for: ${topic}. Under 150 chars.`,
+        email  :`Write a professional email about: ${topic}. Include subject line.`,
+        reply  :`Write a witty clever reply to: ${topic}.`,
+        flirt  :`Write a charming tasteful message about: ${topic}. Keep classy.`,
+        apology:`Write a genuine sincere apology about: ${topic}.`,
+        tweet  :`Write 3 tweet options about: ${topic}. Under 280 chars each with hashtags.`,
+        speech :`Write a short speech about: ${topic}. Strong opening, 3 points, memorable close.`,
+        code   :`Write clean commented code for: ${topic}. Include brief explanation.`
+    };
+    if(!TYPES[type]) return reply(`✍️ *AI Writer — Types:*\n${Object.keys(TYPES).map(t=>`\`${t}\``).join(' | ')}\n\n*Usage:* \`.aiwrite <type> <topic>\`\n*Example:* \`.aiwrite roast my friend who is always late\``);
+    if(!topic) return reply(`📝 \`.aiwrite ${type} <topic>\``);
+    const stub=await thinking(Gifted,from,mek,`✍️ _Writing ${type}…_`);
+    const {text,err}=await askAI(TYPES[type]);
+    return editMsg(Gifted,stub,err?`❌ ${text}`:`✍️ *${type.charAt(0).toUpperCase()+type.slice(1)}*\n\n${text}`);
+});
 
-        for (const msg of messages) {
-            try {
-                if (!msg.message || msg.key.fromMe) continue;
+// ==============================================================================
+// 17.  .aidecode  — EXPLAIN / ANALYZE ANYTHING
+// ==============================================================================
+gmd({
+    pattern:'aidecode', cmdname:'aidecode', aliases:['gianalyze','explain','aianalyze'],
+    category:'ai', desc:'Explain or analyze any quoted text or image with AI.', react:'🔍', filename:__filename
+}, async (from, Gifted, conText) => {
+    const { mek, q='', reply, isSuperUser } = conText;
+    if (!isSuperUser) return reply('❌ Owner only.');
+    const quoted=mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+    if(!q.trim()&&!quoted) return reply('📝 Reply to any message/image with `.aidecode [optional focus]`');
+    let imgUrls=[];
+    if(quoted?.imageMessage){
+        try{
+            const tp=await Gifted.downloadAndSaveMediaMessage(quoted.imageMessage,`tmp_dec_${Date.now()}`);
+            if(tp){ const url=await uploadImgBB(tp); if(url) imgUrls.push(url); try{fs.unlinkSync(tp);}catch(_){} }
+        }catch(e){}
+    }
+    const ctx=quoted?.conversation||quoted?.extendedTextMessage?.text||'';
+    let prompt=imgUrls.length?`Analyse this image in detail. ${q||'What do you see?'}`:(`Explain and analyse:\n"${ctx||q}"\nBe thorough but clear.`);
+    if(ctx&&q) prompt=`Text: "${ctx}"\n\nFocus on: ${q}`;
+    const stub=await thinking(Gifted,from,mek,'🔍 _Analysing…_');
+    const {text,err}=await askAI(prompt,imgUrls);
+    return editMsg(Gifted,stub,err?`❌ ${text}`:`🔍 *Analysis*\n\n${text}`);
+});
 
-                const chatId = msg.key.remoteJid;
-                const sender = msg.key.participant || msg.key.remoteJid;
-                const body = msg.message.conversation || 
-                             msg.message.extendedTextMessage?.text || 
-                             msg.message.imageMessage?.caption || '';
+// ==============================================================================
+// 18.  EVENT WATCHER — auto-reply + auto-enhance
+// ==============================================================================
+let _watchDone=false;
 
-                if (body.startsWith('.') || body.startsWith('!')) continue;
+const attachWatcher=(Gifted)=>{
+    if(_watchDone||!Gifted?.ev) return;
+    _watchDone=true;
 
-                // Determine Session Priority
-                let session = null;
-                
-                // 1. Stalker (Global priority)
+    Gifted.ev.on('messages.upsert', async({messages,type})=>{
+        if(type!=='append') return;
+        for(const msg of messages){
+            try{
+                if(!msg.message) continue;
+                const fromMe=msg.key.fromMe, chatId=msg.key.remoteJid||'';
+                const sender=msg.key.participant||msg.key.remoteJid||'';
+                const isGrp=chatId.endsWith('@g.us');
+                const body=msg.message.conversation||msg.message.extendedTextMessage?.text||msg.message.imageMessage?.caption||'';
+
+                // Auto-enhance own messages
+                if(fromMe&&State.autoEnhance&&body.length>10&&!body.startsWith('.')){
+                    setTimeout(async()=>{
+                        try{
+                            await sleep(700+Math.random()*600);
+                            const{text:fixed,err}=await askAI(`Fix grammar/spelling only. Preserve tone and language. Return ONLY corrected text.\n\nText: ${body}`);
+                            if(!err&&fixed.trim()&&fixed.trim()!==body.trim())
+                                await Gifted.sendMessage(chatId,{text:fixed.trim(),edit:msg.key}).catch(()=>{});
+                        }catch(e){}
+                    },0);
+                    continue;
+                }
+                if(fromMe) continue;
+                if(['.','/','+','!'].includes(body[0])) continue;
+                if(!body.trim()&&!msg.message.imageMessage) continue;
+
+                let sess=null;
+                if(State.stalkers.has(sender)) sess=State.stalkers.get(sender);
+                else if(State.targets.has(sender)&&(!State.targets.get(sender).chatId||State.targets.get(sender).chatId===chatId)) sess=State.targets.get(sender);
+                else if(State.chats.has(chatId)) sess=State.chats.get(chatId);
+                else if(!isGrp&&State.dmActive){
+                    if(!State.dmSessions.has(sender)) State.dmSessions.set(sender,{gem:State.dmGem||State.PERSONA,history:[],gemName:'dm'});
+                    sess=State.dmSessions.get(sender);
+                }
+                if(!sess) continue;
+
+                setImmediate(async()=>{
+                    try{
+                        let imgUrls=[], input=body||'[image]';
+                        if(msg.message.imageMessage){
+                            try{
+                                const tp=await Gifted.downloadAndSaveMediaMessage(msg.message.imageMessage,`tmp_w_${Date.now()}`);
+                                if(tp){const u=await uploadImgBB(tp);if(u)imgUrls.push(u);try{fs.unlinkSync(tp);}catch(_){}}
+                            }catch(e){}
+                        }
+                        State.addHist(sess,'User',input);
+                        const prompt=State.buildPrompt(sess.gem,sess.history,input);
+                        await sleep(Math.min(input.length*35,3000)+Math.random()*700);
+                        try{await Gifted.sendPresenceUpdate('composing',chatId);}catch(_){}
+                        const{text:rep,err}=await askAI(prompt,imgUrls);
+                        try{await Gifted.sendPresenceUpdate('paused',chatId);}catch(_){}
+                        if(err&&CB.open()) return;
+                        State.addHist(sess,'AI',rep);
+                        const q={};
+                        if(msg.key?.remoteJid&&msg.key?.id){
+                            const k={remoteJid:String(msg.key.remoteJid),fromMe:false,id:String(msg.key.id)};
+                            if(msg.key.participant)k.participant=String(msg.key.participant);
+                            q.quoted={key:k,message:msg.message};
+                        }
+                        await Gifted.sendMessage(chatId,{text:rep},q);
+                    }catch(e){console.error('[AIGems] watcher reply:',e.message);}
+                });
+            }catch(e){console.error('[AIGems] watcher loop:',e.message);}
+        }
+    });
+    console.log('[AIGems] Watcher active');
+};
+
+const _boot=setInterval(()=>{ const G=global.conn||global.client; if(G){attachWatcher(G);clearInterval(_boot);} },8000);
+setTimeout(()=>{ const G=global.conn||global.client; if(G){attachWatcher(G);clearInterval(_boot);} },2000);
+
+console.log('[AIGems] Module loaded');
+if (fromMe) continue;
+                if (['.', '/', '+', '!'].includes(body[0])) continue;
+                if (!body.trim() && !msg.message.imageMessage) continue;
+
+                let sess = null;
+                // STALK LOGIC FIX: Always prioritize Global Stalkers and Targets by sender JID
+                // sender JID is normalized: num@s.whatsapp.net
                 if (State.stalkers.has(sender)) {
-                    session = State.stalkers.get(sender);
-                } 
-                // 2. Target (Specific chat priority)
-                else if (State.targets.has(sender)) {
+                    sess = State.stalkers.get(sender);
+                } else if (State.targets.has(sender)) {
                     const targetData = State.targets.get(sender);
-                    if (targetData.chatId === chatId) session = targetData;
-                }
-                // 3. Chat-wide AI
-                else if (State.chats.has(chatId)) {
-                    session = State.chats.get(chatId);
-                }
-                // 4. DM Auto-reply
-                else if (!chatId.endsWith('@g.us') && State.dmActive) {
+                    // Targeted in specific chat or anywhere if chatId is null
+                    if (!targetData.chatId || targetData.chatId === chatId) sess = targetData;
+                } else if (State.chats.has(chatId)) {
+                    sess = State.chats.get(chatId);
+                } else if (!isGrp && State.dmActive) {
                     if (!State.dmSessions.has(sender)) {
                         State.dmSessions.set(sender, {
                             gem: State.dmGem || State.PERSONA,
@@ -743,1139 +867,47 @@ const initWatcher = (Gifted) => {
                             gemName: 'dm'
                         });
                     }
-                    session = State.dmSessions.get(sender);
-                }
-
-                if (!session) continue;
-
-                // Execute Response Pipeline
-                (async () => {
-                    try {
-                        State.addHist(session, 'User', body);
-                        const finalPrompt = State.buildPrompt(session.gem, session.history, body);
-                        
-                        await Gifted.sendPresenceUpdate('composing', chatId);
-                        const { text, err } = await askAI(finalPrompt);
-                        await Gifted.sendPresenceUpdate('paused', chatId);
-
-                        if (!err) {
-                            State.addHist(session, 'AI', text);
-                            await Gifted.sendMessage(chatId, { text }, { quoted: msg });
-                        }
-                    } catch (err) {
-                        console.error('[Watcher Pipeline Error]:', err.message);
-                    }
-                })();
-            } catch (e) {
-                console.error('[Watcher Main Loop Error]:', e.message);
-            }
-        }
-    });
-};
-
-// Auto-bootstrap the watcher when global conn is available
-const checkConn = setInterval(() => {
-    const conn = global.conn || global.client;
-    if (conn) {
-        initWatcher(conn);
-        clearInterval(checkConn);
-        console.log('✅ [AIGems] Neural Watcher initialized.');
-    }
-}, 5000);
-/**
- * @section Image Processing & Generation Utilities
- * @description ImgBB integration, Infip Key-Rotator, and Media Fallback Systems
- */
-
-/**
- * Uploads a local file to ImgBB for vision processing tasks.
- * @param {string} filePath - Path to the temporary image file.
- * @returns {Promise<string|null>} - Public URL or null.
- */
-const uploadImgBB = async (filePath) => {
-    if (!fs.existsSync(filePath)) return null;
-    try {
-        const FormData = require('form-data');
-        const form = new FormData();
-        form.append('image', fs.createReadStream(filePath));
-        
-        const res = await axios.post(
-            `https://api.imgbb.com/1/upload?key=${CFG.IMGBB_KEY}&expiration=600`,
-            form, 
-            { 
-                headers: form.getHeaders(), 
-                timeout: 30000 
-            }
-        );
-        return res.data?.data?.url ?? null;
-    } catch (e) {
-        console.error('[AIGems] ImgBB Upload Error:', e.message);
-        return null;
-    }
-};
-
-/**
- * Generates an image using Infip API with automatic key rotation and caching.
- * @param {string} prompt - The visual description.
- * @param {Object} opts - Model, size, and quality settings.
- */
-const generateImage = async (prompt, opts = {}) => {
-    const model = opts.model || CFG.IMG_MODEL;
-    const size = opts.size || CFG.IMG_SIZE;
-    const cacheKey = `img:${model}:${size}:${prompt.toLowerCase().trim().slice(0, 50)}`;
-
-    // Check Latency-Reduction Cache
-    const cached = _iCache.get(cacheKey);
-    if (cached && (Date.now() - cached.ts < 3600000)) return cached.urls;
-
-    if (!Limiter.check()) return [];
-    
-    // Automatic Key Rotation
-    const rotateKey = () => {
-        _iKey = CFG.INFIP_POOL[Math.floor(Math.random() * CFG.INFIP_POOL.length)];
-    };
-
-    for (let attempt = 0; attempt < CFG.RETRIES; attempt++) {
-        try {
-            Limiter.hit('img');
-            const response = await axios.post(`${CFG.INFIP_URL}/v1/images/generations`, {
-                model,
-                prompt,
-                n: Math.min(opts.count || CFG.IMG_COUNT, 4),
-                size,
-                response_format: 'url',
-                quality: opts.quality || CFG.IMG_QUALITY,
-                style: opts.style || CFG.IMG_STYLE
-            }, { 
-                headers: { 
-                    'Authorization': `Bearer ${_iKey}`,
-                    'Content-Type': 'application/json'
-                }, 
-                timeout: CFG.TIMEOUT 
-            });
-
-            if (response.data?.data?.length) {
-                const urls = response.data.data.map(d => d.url);
-                _iCache.set(cacheKey, { urls, ts: Date.now() });
-                return urls;
-            }
-        } catch (e) {
-            Limiter.err();
-            rotateKey(); // Rotate key on failure
-            if (attempt === CFG.RETRIES - 1) console.error('[AIGems] Image Gen Exhausted:', e.message);
-            await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
-        }
-    }
-    return [];
-};
-
-/**
- * Sends image with a text-fallback if media upload fails.
- */
-const sendImg = async (Gifted, from, url, caption, mek) => {
-    try {
-        await Gifted.sendMessage(from, { 
-            image: { url }, 
-            caption: caption 
-        }, { quoted: mek });
-        return true;
-    } catch (err) {
-        // Fallback: Send URL as text if WhatsApp media server rejects
-        await Gifted.sendMessage(from, { 
-            text: `🎨 *Image Generation Success*\n\n*Prompt:* ${caption}\n\n🔗 *Direct Link:* ${url}\n\n_Note: Media display failed, use the link above._`
-        }, { quoted: mek });
-        return false;
-    }
-};
-
-/**
- * @section Enhanced Commands
- * @description Robust command set with WhatsApp Markdown support and Stalk Fix.
- */
-
-gmd({
-    pattern: 'stalk',
-    cmdname: 'stalk',
-    category: 'ai',
-    desc: 'FIXED: Global stalker — target is tracked across all chats.',
-    react: '🎯'
-}, async (from, Gifted, context) => {
-    const { q, mek, reply, isSuperUser } = context;
-    if (!isSuperUser) return reply('❌ *Access Denied.* Owner only.');
-
-    let targetNum = q.split(' ')[0].replace(/[^0-9]/g, '');
-    
-    // Handle Mentions
-    if (mek.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0]) {
-        targetNum = mek.message.extendedTextMessage.contextInfo.mentionedJid[0].split('@')[0];
-    }
-
-    if (!targetNum) return reply('📝 *Usage:* `.stalk <number/mention> [gem_name]`');
-
-    const jid = targetNum + '@s.whatsapp.net';
-    const gemName = q.split(' ')[1] || 'default';
-    const gemTxt = (gemName !== 'default' ? Gems.get(gemName) : null) || State.PERSONA;
-
-    // Direct registration into global state
-    State.stalkers.set(jid, {
-        gem: gemTxt,
-        history: [],
-        gemName: gemName
-    });
-
-    return reply(`🎯 *Global Stalker Active*\n\n*Target:* @${targetNum}\n*Persona:* \`${gemName}\`\n*Status:* Monitoring all incoming packets.`, { mentions: [jid] });
-});
-
-gmd({
-    pattern: 'vision',
-    cmdname: 'vision',
-    category: 'ai',
-    desc: 'Analyze images using ImgBB + AI Neural Decode.',
-    react: '👁️'
-}, async (from, Gifted, context) => {
-    const { mek, q, reply, react } = context;
-    const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-    const isImage = quoted?.imageMessage || mek.message?.imageMessage;
-
-    if (!isImage) return reply('❌ *Error:* Reply to an image or send an image with `.vision`');
-
-    await react('👁️');
-    const stub = await Gifted.sendMessage(from, { text: '🔍 _Uploading to neural bridge..._' }, { quoted: mek });
-
-    try {
-        const media = quoted?.imageMessage || mek.message.imageMessage;
-        const localPath = await Gifted.downloadAndSaveMediaMessage(media, `vision_${Date.now()}`);
-        const remoteUrl = await uploadImgBB(localPath);
-        
-        if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
-
-        if (!remoteUrl) return await editMsg(Gifted, stub, '❌ *Network Error:* ImgBB link failed.');
-
-        await editMsg(Gifted, stub, '🧠 _Decoding visual patterns..._');
-        
-        const visionPrompt = q || "Explain this image in high detail. If there is text, transcribe it. If there are people, describe their actions.";
-        const { text, err } = await askAI(visionPrompt, [remoteUrl]);
-
-        return await editMsg(Gifted, stub, err ? `❌ *AI Error:* ${text}` : `🧐 *Visual Interpretation*\n\n${text}`);
-    } catch (e) {
-        return await editMsg(Gifted, stub, `❌ *System Failure:* ${e.message}`);
-    }
-});
-
-gmd({
-    pattern: 'imagine',
-    cmdname: 'imagine',
-    category: 'ai',
-    desc: 'High-end image generation with custom parameters.',
-    react: '✨'
-}, async (from, Gifted, context) => {
-    const { q, mek, reply, react } = context;
-    if (!q) return reply('📝 *Usage:* `.imagine <detailed prompt>`\nExample: `.imagine a cyberpunk city in rain, 8k, highly detailed`');
-
-    await react('✨');
-    const stub = await Gifted.sendMessage(from, { text: '🎨 _Drawing your imagination..._' }, { quoted: mek });
-
-    try {
-        const urls = await generateImage(q, { quality: 'hd', style: 'vivid', count: 1 });
-        if (!urls.length) return await editMsg(Gifted, stub, '❌ *Generation Failed:* API keys exhausted or prompt rejected.');
-
-        await del(Gifted, stub.key);
-        return await sendImg(Gifted, from, urls[0], q, mek);
-    } catch (e) {
-        return await editMsg(Gifted, stub, `❌ *Error:* ${e.message}`);
-    }
-});
-
-gmd({
-    pattern: 'upscale',
-    cmdname: 'upscale',
-    category: 'ai',
-    desc: 'Upscale and enhance a low-res image.',
-    react: '💎'
-}, async (from, Gifted, context) => {
-    const { mek, reply } = context;
-    const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-    if (!quoted?.imageMessage) return reply('❌ *Error:* Reply to an image to upscale it.');
-
-    return reply('🔄 _Upscaling logic initializing... (Beta)_');
-});
-
-/**
- * AI Response Formatter for WhatsApp Markdown
- * @param {string} rawText 
- * @returns {string}
- */
-const formatWA = (rawText) => {
-    return rawText
-        .replace(/\*\*(.*?)\*\*/g, '*$1*') // Convert MD Bold to WA Bold
-        .replace(/__(.*?)__/g, '_$1_')   // Convert MD Italic to WA Italic
-        .replace(/`(.*?)`/g, '```$1```') // Ensure code blocks are clean
-        .trim();
-};
-// ==============================================================================
-// 19. UPDATED STATE MANAGEMENT (PHASE 4: STALKING & HISTORY FIX)
-// ==============================================================================
-/**
- * State redesign to handle global stalking, chat-specific targeting, 
- * and DM automation with memory pruning and precise JID identification.
- */
-const State = {
-    dmActive: false,
-    dmGem: null,
-    autoEnhance: false,
-    PERSONA: 'You are a witty, slightly sarcastic but genuinely helpful person on WhatsApp. Keep replies short and casual. Never say you are an AI. Use context.',
-
-    // Core Registries
-    sessions: new Map(), // key: remoteJid (Group/DM), val: { gem, history, gemName }
-    targets:  new Map(), // key: senderJid, val: { gem, history, gemName, chatJid }
-    stalkers: new Map(), // key: senderJid, val: { gem, history, gemName }
-    dmSessions: new Map(), // key: senderJid, val: { gem, history, gemName }
-
-    /**
-     * Fixes the 'stalk' logic by correctly identifying the participant JID.
-     * Handles both Group chats (participant) and Private DMs (remoteJid).
-     */
-    getSenderJid(msg) {
-        const raw = msg.key.participant || msg.key.remoteJid || '';
-        return raw.split(':')[0].split('@')[0] + '@s.whatsapp.net';
-    },
-
-    /**
-     * Adds an entry to conversation history with ISO-based timestamping
-     * and dynamic pruning based on CFG.MAX_HIST.
-     */
-    addHist(sess, role, text) {
-        if (!sess.history) sess.history = [];
-        const timestamp = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-        const entry = `[${timestamp}] ${role}: ${text}`;
-        sess.history.push(entry);
-
-        // Advanced Pruning: Keep only the most recent context
-        if (sess.history.length > CFG.MAX_HIST) {
-            sess.history = sess.history.slice(-CFG.MAX_HIST);
-        }
-    },
-
-    /**
-     * Constructs a formatted AI prompt including system persona and chat context.
-     */
-    buildPrompt(sess, input) {
-        const sys = sess.gem || this.PERSONA;
-        const hist = sess.history || [];
-        return `SYSTEM_INSTRUCTIONS:\n${sys}\n\n--- CHAT_HISTORY ---\n${hist.join('\n')}\n---\nUSER: ${input}\nAI_REPLY:`;
-    }
-};
-
-// ==============================================================================
-// 20. COMMANDS: TARGETING & STALKING
-// ==============================================================================
-
-gmd({
-    pattern: 'stalk',
-    cmdname: 'stalk',
-    category: 'ai',
-    desc: 'Follow a specific user across all chats and auto-reply.',
-    react: '🕵️'
-}, async (from, Gifted, conText) => {
-    const { q, mek, reply, isSuperUser } = conText;
-    if (!isSuperUser) return reply('❌ *Unauthorized:* This tool is restricted to the Bot Owner.');
-
-    const args = q.trim().split(/\s+/);
-    const targetNum = args[0]?.replace(/[^0-9]/g, '');
-    if (!targetNum) return reply('📝 *Usage:* `.stalk <number> [gem_name]`\nExample: `.stalk 1234567890 sarcastic`');
-
-    const targetJid = targetNum + '@s.whatsapp.net';
-    const gemName = args[1] || 'default';
-    const gemTxt = (gemName !== 'default' ? Gems.get(gemName) : null) || State.PERSONA;
-
-    State.stalkers.set(targetJid, {
-        gem: gemTxt,
-        history: [],
-        gemName: gemName
-    });
-
-    return reply(`🕵️ *Global Stalker Initialized*\n\n*Target:* @${targetNum}\n*Persona:* \`${gemName}\`\n*Status:* Watching all conversations for activity.`, { mentions: [targetJid] });
-});
-
-gmd({
-    pattern: 'unstalk',
-    cmdname: 'unstalk',
-    category: 'ai',
-    desc: 'Remove a user from the stalking list.',
-    react: '🚫'
-}, async (from, Gifted, conText) => {
-    const { q, isSuperUser, reply } = conText;
-    if (!isSuperUser) return reply('❌ *Access Denied*');
-
-    const targetNum = q.replace(/[^0-9]/g, '');
-    if (!targetNum) return reply('📝 *Usage:* `.unstalk <number>`');
-
-    const targetJid = targetNum + '@s.whatsapp.net';
-    if (State.stalkers.delete(targetJid)) {
-        return reply(`✅ *Stalking Terminated:* @${targetNum} is no longer being followed.`, { mentions: [targetJid] });
-    }
-    return reply(`❌ *Error:* @${targetNum} was not on the stalk list.`, { mentions: [targetJid] });
-});
-
-gmd({
-    pattern: 'target',
-    cmdname: 'target',
-    category: 'ai',
-    desc: 'Auto-reply to a specific user ONLY within the current chat.',
-    react: '🎯'
-}, async (from, Gifted, conText) => {
-    const { q, mek, reply, isSuperUser } = conText;
-    if (!isSuperUser) return reply('❌ *Access Denied*');
-
-    const args = q.trim().split(/\s+/);
-    const targetNum = args[0]?.replace(/[^0-9]/g, '');
-    if (!targetNum) return reply('📝 *Usage:* `.target <number> [gem_name]`');
-
-    const targetJid = targetNum + '@s.whatsapp.net';
-    const gemName = args[1] || 'default';
-    const gemTxt = (gemName !== 'default' ? Gems.get(gemName) : null) || State.PERSONA;
-
-    State.targets.set(targetJid, {
-        gem: gemTxt,
-        history: [],
-        chatId: from,
-        gemName: gemName
-    });
-
-    return reply(`🎯 *Target Locked*\n\n*User:* @${targetNum}\n*Scope:* Current Chat Only\n*Gem:* \`${gemName}\``, { mentions: [targetJid] });
-});
-
-// ==============================================================================
-// 21. CORE WATCHER: ROBUST JID IDENTIFICATION
-// ==============================================================================
-
-/**
- * The Advanced Watcher handles the logic for triggering AI replies based on
- * Global Stalkers, Local Targets, Active Chat sessions, and DM Auto-Pilot.
- */
-const attachPhase4Watcher = (Gifted) => {
-    if (!Gifted?.ev) return;
-
-    Gifted.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify' && type !== 'append') return;
-
-        for (const msg of messages) {
-            try {
-                if (!msg.message || msg.key.fromMe) continue;
-
-                const chatId = msg.key.remoteJid;
-                const senderJid = State.getSenderJid(msg);
-                const body = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || '';
-                const isGrp = chatId.endsWith('@g.us');
-
-                // Determine session context
-                let activeSess = null;
-
-                // 1. Check Global Stalkers (Highest Priority - follows user everywhere)
-                if (State.stalkers.has(senderJid)) {
-                    activeSess = State.stalkers.get(senderJid);
-                } 
-                // 2. Check Targeted Users (Middle Priority - chat-specific lock)
-                else if (State.targets.has(senderJid)) {
-                    const t = State.targets.get(senderJid);
-                    if (!t.chatId || t.chatId === chatId) activeSess = t;
-                }
-                // 3. Check Chat-wide AI (Everyone in this group/DM)
-                else if (State.sessions.has(chatId)) {
-                    activeSess = State.sessions.get(chatId);
-                }
-                // 4. DM Auto-Pilot (Lowest Priority - only in private chats)
-                else if (!isGrp && State.dmActive) {
-                    if (!State.dmSessions.has(senderJid)) {
-                        State.dmSessions.set(senderJid, { gem: State.dmGem || State.PERSONA, history: [], gemName: 'dm_auto' });
-                    }
-                    activeSess = State.dmSessions.get(senderJid);
-                }
-
-                if (!activeSess) continue;
-
-                // Ignore commands
-                if (body.startsWith('.') || body.startsWith('/') || body.startsWith('!')) continue;
-
-                // Execute Reply Logic
-                setImmediate(async () => {
-                    try {
-                        let mediaUrls = [];
-                        if (msg.message.imageMessage) {
-                            const path = await Gifted.downloadAndSaveMediaMessage(msg.message.imageMessage, `watch_${Date.now()}`);
-                            const url = await uploadImgBB(path);
-                            if (url) mediaUrls.push(url);
-                            if (fs.existsSync(path)) fs.unlinkSync(path);
-                        }
-
-                        // Update Memory
-                        State.addHist(activeSess, 'User', body || '[Media/Image]');
-
-                        // Generate Response
-                        const prompt = State.buildPrompt(activeSess, body || 'Analyse this image');
-                        
-                        // Simulation of human typing
-                        await Gifted.sendPresenceUpdate('composing', chatId);
-                        await sleep(Math.max(1000, Math.min(body.length * 50, 4000)));
-
-                        const { text, err } = await askAI(prompt, mediaUrls);
-                        await Gifted.sendPresenceUpdate('paused', chatId);
-
-                        if (err && CB.open()) return;
-
-                        const finalReply = formatWA(text);
-                        State.addHist(activeSess, 'AI', finalReply);
-
-                        // Send message with quotation context
-                        await Gifted.sendMessage(chatId, { text: finalReply }, { quoted: msg });
-
-                    } catch (e) {
-                        console.error('[Phase4Watcher] Session Error:', e.message);
-                    }
-                });
-
-            } catch (err) {
-                console.error('[Phase4Watcher] Loop Error:', err.message);
-            }
-        }
-    });
-};
-
-// Initialize the upgraded watcher
-const _initWatcher = setInterval(() => {
-    const G = global.conn || global.client;
-    if (G) {
-        attachPhase4Watcher(G);
-        clearInterval(_initWatcher);
-        console.log('[Phase 4] Advanced State & Stalking Watcher Online');
-    }
-}, 5000);
-
-// ==============================================================================
-// 22. UTILITY: AI SESSION MANAGEMENT
-// ==============================================================================
-
-gmd({
-    pattern: 'forget',
-    cmdname: 'forget',
-    category: 'ai',
-    desc: 'Clear the AI memory for the current session.',
-    react: '🧹'
-}, async (from, Gifted, conText) => {
-    const { isSuperUser, reply } = conText;
-    if (!isSuperUser) return;
-
-    if (State.sessions.has(from)) {
-        State.sessions.get(from).history = [];
-        return reply('🧹 *Memory Purged:* The AI has forgotten previous context for this chat.');
-    }
-    
-    // Check if there is a target session here
-    let found = false;
-    State.targets.forEach((val, key) => {
-        if (val.chatId === from) {
-            val.history = [];
-            found = true;
-        }
-    });
-
-    if (found) return reply('🧹 *Memory Purged:* Target history for this chat cleared.');
-    return reply('ℹ️ No active AI session found in this chat.');
-});
-
-gmd({
-    pattern: 'aisettings',
-    cmdname: 'aisettings',
-    category: 'ai',
-    desc: 'Configure global AI behavior.',
-    react: '⚙️'
-}, async (from, Gifted, conText) => {
-    const { q, isSuperUser, reply } = conText;
-    if (!isSuperUser) return;
-
-    const [opt, val] = q.toLowerCase().split(' ');
-    if (opt === 'maxhist') {
-        const num = parseInt(val);
-        if (isNaN(num)) return reply('📝 `.aisettings maxhist <number>`');
-        CFG.MAX_HIST = num;
-        return reply(`✅ *MAX_HIST* updated to ${num} messages.`);
-    }
-
-    return reply(
-        `⚙️ *AI Global Settings*\n\n` +
-        `• *Max History:* ${CFG.MAX_HIST} (pruning threshold)\n` +
-        `• *Auto-Enhance:* ${State.autoEnhance ? 'ON' : 'OFF'}\n` +
-        `• *Rate Limit:* ${CFG.MAX_RPM} rpm / ${CFG.MAX_RPH} rph\n\n` +
-        `_Usage: .aisettings <param> <value>_`
-    );
-});
-// ==============================================================================
-// 23. COMMAND: .gem — PERSONA VAULT (.gem)
-// ==============================================================================
-
-gmd({
-    pattern: 'gem',
-    cmdname: 'gem',
-    aliases: ['gems', 'persona', 'personality'],
-    category: 'ai',
-    desc: 'AI persona vault. Create, list, remix, and use specialized AI personalities.',
-    react: '💎'
-}, async (from, Gifted, conText) => {
-    const { mek, q, isSuperUser, reply } = conText;
-    if (!isSuperUser) return reply('❌ *Access Denied:* Elite Senior Developer access required.');
-
-    const args = q.trim().split(/\s+/);
-    const sub = args[0]?.toLowerCase();
-    const params = args.slice(1);
-
-    if (sub === 'create') {
-        const name = params[0]?.toLowerCase();
-        const prompt = params.slice(1).join(' ');
-        if (!name || !prompt) return reply('📝 *Usage:* `.gem create <name> <system_prompt>`');
-        const success = Gems.save(name, prompt);
-        return reply(success ? `✅ *Gem Created:* \`${name}\` is now stored in the vault.` : '❌ *Error:* Failed to save gem to database.');
-    }
-
-    if (sub === 'gen') {
-        const topic = params.join(' ');
-        if (!topic) return reply('📝 *Usage:* `.gem gen <topic>` (e.g., `.gem gen sarcastic gamer`)');
-        const stub = await thinking(Gifted, from, mek, '🔮 *Forging Persona...*');
-        const { text, err } = await askAI(`Generate a high-quality WhatsApp system prompt for an AI persona based on: ${topic}. Include specific speech patterns, emoji usage, and character traits. Return ONLY the raw system prompt text.`);
-        if (err) return editMsg(Gifted, stub, `❌ *Error:* ${text}`);
-        const gemName = (params[0] || 'gem').toLowerCase().slice(0, 10) + '_ai';
-        Gems.save(gemName, text);
-        return editMsg(Gifted, stub, `✨ *Gem Forged:* \`${gemName}\`\n\n*System Prompt Preview:*\n_${text.slice(0, 250)}..._\n\nActivate with: \`.gem use ${gemName}\``);
-    }
-
-    if (sub === 'analyze' || sub === 'clone') {
-        const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-        if (!quoted) return reply('📝 *Instruction:* Reply to a message with `.gem analyze` to clone that user\'s writing style.');
-        const sample = quoted.conversation || quoted.extendedTextMessage?.text || quoted.imageMessage?.caption;
-        if (!sample) return reply('❌ *Error:* No text found in the replied message.');
-        const stub = await thinking(Gifted, from, mek, '🕵️ *Analyzing Style...*');
-        const { text, err } = await askAI(`Analyze the following text sample and create a system prompt that perfectly replicates this user's writing style, tone, slang, and formatting.\n\nSample: "${sample}"\n\nReturn ONLY the system prompt.`);
-        if (err) return editMsg(Gifted, stub, `❌ *Error:* ${text}`);
-        const gemName = 'clone_' + Date.now().toString(36);
-        Gems.save(gemName, text);
-        return editMsg(Gifted, stub, `🧬 *Style Cloned:* \`${gemName}\`\n\n_This AI will now mimic the replied message's vibe._\n\nUse: \`.gem use ${gemName}\``);
-    }
-
-    if (sub === 'remix') {
-        const baseName = params[0]?.toLowerCase();
-        const instruction = params.slice(1).join(' ');
-        if (!baseName || !instruction) return reply('📝 *Usage:* `.gem remix <existing_gem> <change_instruction>`');
-        const basePrompt = Gems.get(baseName);
-        if (!basePrompt) return reply(`❌ *Error:* Gem \`${baseName}\` not found.`);
-        const stub = await thinking(Gifted, from, mek, `🔀 *Remixing \`${baseName}\`...*`);
-        const { text, err } = await askAI(`Take this existing system prompt and modify it according to the instructions. Return ONLY the new prompt.\n\nBase Prompt: ${basePrompt}\n\nInstruction: ${instruction}`);
-        if (err) return editMsg(Gifted, stub, `❌ *Error:* ${text}`);
-        const newName = `${baseName}_remix`;
-        Gems.save(newName, text);
-        return editMsg(Gifted, stub, `🔀 *Gem Remixed:* \`${newName}\` created based on \`${baseName}\`.`);
-    }
-
-    if (sub === 'list') {
-        const list = Gems.list();
-        if (!list.length) return reply('📭 *Vault Empty:* No custom gems found. Create one with `.gem gen`.');
-        let out = '📚 *AIGems Vault*\n\n';
-        list.forEach((g, i) => { out += `${i + 1}. 💎 \`${g}\`\n`; });
-        out += '\n_Use `.gem view <name>` for details or `.gem use <name>` to set active persona._';
-        return reply(out);
-    }
-
-    if (sub === 'view') {
-        const name = params[0]?.toLowerCase();
-        if (!name) return reply('📝 *Usage:* `.gem view <name>`');
-        const prompt = Gems.get(name);
-        if (!prompt) return reply('❌ *Error:* Gem not found.');
-        return reply(`💎 *Gem Details: \`${name}\`*\n\n${prompt}`);
-    }
-
-    if (sub === 'use') {
-        const name = params[0]?.toLowerCase();
-        if (!name) return reply('📝 *Usage:* `.gem use <name>`');
-        const prompt = Gems.get(name);
-        if (!prompt) return reply('❌ *Error:* Gem not found.');
-        State.dmGem = prompt;
-        return reply(`✅ *Active Persona:* \`${name}\` set for Auto-Pilot.`);
-    }
-
-    if (sub === 'delete' || sub === 'del') {
-        const name = params[0]?.toLowerCase();
-        if (!name) return reply('📝 *Usage:* `.gem delete <name>`');
-        const success = Gems.del(name);
-        return reply(success ? `🗑️ *Gem Deleted:* \`${name}\` removed.` : '❌ *Error:* Gem not found.');
-    }
-
-    return reply(
-        `💎 *AIGems Persona Vault*\n\n` +
-        `• \`.gem list\` — View all personas\n` +
-        `• \`.gem gen <topic>\` — AI generates a new persona\n` +
-        `• \`.gem analyze\` — Clone style from replied msg\n` +
-        `• \`.gem remix <n> <t>\` — Modify existing gem\n` +
-        `• \`.gem use <name>\` — Set as active persona\n\n` +
-        `_Sub-commands: create, list, gen, analyze, remix, view, use, delete_`
-    );
-});
-
-// ==============================================================================
-// 24. COMMAND: .gai — AI CONTROL CENTER (.gai)
-// ==============================================================================
-
-gmd({
-    pattern: 'gai',
-    cmdname: 'gai',
-    aliases: ['ai', 'brain', 'control'],
-    category: 'ai',
-    desc: 'Advanced AI control: Target, Stalk, DM mode, and Session Status.',
-    react: '🧠'
-}, async (from, Gifted, conText) => {
-    const { mek, q, isSuperUser, reply } = conText;
-    if (!isSuperUser) return reply('❌ *Access Denied:* Authorized Controller status required.');
-
-    const args = q.trim().split(/\s+/);
-    const sub = args[0]?.toLowerCase();
-    const params = args.slice(1);
-
-    if (sub === 'dm') {
-        const toggle = params[0]?.toLowerCase();
-        if (toggle === 'on') {
-            State.dmActive = true;
-            return reply(`📨 *DM Auto-Pilot: ✅ ENABLED*\nPersona: ${State.dmGem ? 'Custom Gem' : 'Default'}`);
-        }
-        if (toggle === 'off') {
-            State.dmActive = false;
-            return reply('📨 *DM Auto-Pilot: ❌ DISABLED*');
-        }
-        return reply(`📨 *DM Auto-Pilot:* ${State.dmActive ? '✅ ACTIVE' : '❌ INACTIVE'}`);
-    }
-
-    if (sub === 'chat') {
-        const gemName = params[0]?.toLowerCase() || 'default';
-        const prompt = (gemName !== 'default' ? Gems.get(gemName) : null) || State.PERSONA;
-        State.chats.set(from, { gem: prompt, history: [], gemName });
-        return reply(`⚔️ *Chat AI Active:* Using \`${gemName}\` persona for this chat.`);
-    }
-
-    if (sub === 'target') {
-        let num = params[0]?.replace(/[^0-9]/g, '');
-        const gemName = params[1]?.toLowerCase() || 'default';
-        
-        if (!num && mek.message?.extendedTextMessage?.contextInfo?.participant) {
-            num = mek.message.extendedTextMessage.contextInfo.participant.split('@')[0];
-        }
-        
-        if (!num) return reply('📝 *Usage:* `.gai target <number> [gem]` or reply to someone.');
-        
-        const tjid = num + '@s.whatsapp.net';
-        const prompt = (gemName !== 'default' ? Gems.get(gemName) : null) || State.PERSONA;
-        
-        State.targets.set(tjid, { gem: prompt, history: [], chatId: from, gemName });
-        return reply(`🤖 *Target Locked:* @${num}\n*Mode:* Local (This chat only)\n*Gem:* \`${gemName}\``, { mentions: [tjid] });
-    }
-
-    if (sub === 'stalk') {
-        let num = params[0]?.replace(/[^0-9]/g, '');
-        const gemName = params[1]?.toLowerCase() || 'default';
-        
-        if (!num && mek.message?.extendedTextMessage?.contextInfo?.participant) {
-            num = mek.message.extendedTextMessage.contextInfo.participant.split('@')[0];
-        }
-        
-        if (!num) return reply('📝 *Usage:* `.gai stalk <number> [gem]` or reply to someone.');
-        
-        const tjid = num + '@s.whatsapp.net'; // Normalization Fix
-        const prompt = (gemName !== 'default' ? Gems.get(gemName) : null) || State.PERSONA;
-        
-        State.stalkers.set(tjid, { gem: prompt, history: [], gemName });
-        return reply(`🌍 *Global Stalker Active:* @${num}\n*Mode:* Global (All chats)\n*Gem:* \`${gemName}\``, { mentions: [tjid] });
-    }
-
-    if (sub === 'status') {
-        const stats = Limiter.stats();
-        const cbStatus = CB.open() ? `🛑 *TRIPPED*` : `🟢 *HEALTHY*`;
-        
-        let report = `📊 *AI System Status*\n\n` +
-                     `• *DM Auto-Pilot:* ${State.dmActive ? '✅' : '❌'}\n` +
-                     `• *Active Chats:* ${State.chats.size}\n` +
-                     `• *Targeted Users:* ${State.targets.size}\n` +
-                     `• *Global Stalkers:* ${State.stalkers.size}\n\n` +
-                     `🛰️ *Load Monitor*\n` +
-                     `• *Circuit:* ${cbStatus} (${CB.fails}/${CB.THRESH})\n` +
-                     `• *Traffic:* ${stats.rpm} RPM | ${stats.rph} RPH\n` +
-                     `• *Today:* AI:${stats.ai} | Img:${stats.img} | Err:${stats.err}\n`;
-        
-        return reply(report);
-    }
-
-    if (sub === 'summary') {
-        const sess = State.chats.get(from) || [...State.targets.values()].find(t => t.chatId === from);
-        if (!sess || !sess.history.length) return reply('❌ *Error:* No active history to summarize in this chat.');
-        
-        const stub = await thinking(Gifted, from, mek, '📝 *Generating Summary...*');
-        const historyData = sess.history.join('\n');
-        const { text, err } = await askAI(`Summarize this chat history in concise bullet points. Focus on key topics and sentiment.\n\nHistory:\n${historyData}`);
-        
-        return editMsg(Gifted, stub, err ? `❌ *Summary Failed:* ${text}` : `📝 *Chat Summary*\n\n${text}`);
-    }
-
-    if (sub === 'stop') {
-        const type = params[0]?.toLowerCase();
-        if (type === 'all') {
-            State.chats.clear(); State.targets.clear(); State.stalkers.clear(); State.dmActive = false;
-            return reply('☢️ *Global Stop:* All AI sessions and stalking terminated.');
-        }
-        State.chats.delete(from);
-        return reply('🛑 *Stop:* AI session ended for this chat.');
-    }
-
-    if (sub === 'wipe') {
-        if (State.chats.has(from)) {
-            State.chats.get(from).history = [];
-            return reply('🧹 *Memory Wiped:* Local session history cleared.');
-        }
-        return reply('ℹ️ No active session here to wipe.');
-    }
-
-    return reply(
-        `🧠 *GAI Controller*\n\n` +
-        `• \`.gai status\` — Network health & stats\n` +
-        `• \`.gai dm <on/off>\` — Auto-private reply\n` +
-        `• \`.gai chat [gem]\` — Reply to everyone here\n` +
-        `• \`.gai target <num>\` — Auto-reply to user here\n` +
-        `• \`.gai stalk <num>\` — Auto-reply to user everywhere\n` +
-        `• \`.gai summary\` — Summarize current context\n` +
-        `• \`.gai stop [all]\` — Terminate AI processes\n` +
-        `• \`.gai wipe\` — Clear session memory`
-    );
-});
-/**
- * .img — Advanced Image Studio
- * Sub-commands: gen, chaos, surprise, enhance, models, config
- */
-gmd({
-    pattern: 'img',
-    cmdname: 'img',
-    aliases: ['imagine', 'genimg', 'drawai'],
-    category: 'ai',
-    desc: 'Creative AI Image Studio. Use .img help for details.',
-    react: '🎨',
-    filename: __filename
-}, async (from, Gifted, conText) => {
-    const { mek, q = '', reply, react, isSuperUser } = conText;
-    if (!isSuperUser) return reply('❌ *Access Denied:* Creative tools restricted to authorized users.');
-
-    const args = q.trim().split(/\s+/);
-    const sub = args[0]?.toLowerCase();
-    const promptText = args.slice(1).join(' ');
-
-    const processGen = async (p, label, stub) => {
-        const urls = await generateImage(p);
-        if (!urls || !urls.length) return editMsg(Gifted, stub, '❌ *Generation Failed:* Check API status or model config.');
-        await del(Gifted, stub.key);
-        await sendImg(Gifted, from, urls[0], `🎨 *Vision Output*\n💭 _${p.slice(0, 150)}..._\n⚙️ \`${CFG.IMG_MODEL}\``, mek);
-        if (urls.length > 1) {
-            for (let i = 1; i < urls.length; i++) {
-                await sendImg(Gifted, from, urls[i], `✨ *Variation ${i + 1}*`, mek);
-            }
-        }
-    };
-
-    if (sub === 'gen' || (!sub && q && !['chaos', 'surprise', 'enhance', 'models', 'config', 'setup', 'cache', 'help'].includes(sub))) {
-        const finalPrompt = sub === 'gen' ? promptText : q;
-        if (!finalPrompt) return reply('📝 *Format:* \`.img gen <detailed prompt>\`');
-        await react('🎨');
-        const stub = await thinking(Gifted, from, mek, '🎨 *Synthesizing Imagery...*');
-        return processGen(finalPrompt, 'gen', stub);
-    }
-
-    if (sub === 'chaos') {
-        const models = Object.keys(CFG.IMG_MDLS).filter(m => CFG.IMG_MDLS[m].tier === 'free');
-        CFG.IMG_MODEL = models[Math.floor(Math.random() * models.length)];
-        CFG.IMG_SIZE = ['1024x1024', '1792x1024', '1024x1792'][Math.floor(Math.random() * 3)];
-        CFG.IMG_QUALITY = Math.random() > 0.5 ? 'hd' : 'standard';
-        CFG.IMG_STYLE = Math.random() > 0.5 ? 'vivid' : 'natural';
-        
-        const stub = await thinking(Gifted, from, mek, '🌪️ *Initiating Chaos Protocol...*');
-        const { text: chaosPrompt } = await askAI('Generate a surreal, abstract, and highly detailed image prompt that defies physics. Return ONLY the prompt.');
-        await editMsg(Gifted, stub, `🌪️ *Chaos Configuration:*\nModel: \`${CFG.IMG_MODEL}\`\nSize: \`${CFG.IMG_SIZE}\`\nStyle: \`${CFG.IMG_STYLE}\``);
-        return processGen(chaosPrompt || 'surreal abstract glitch art 8k', 'chaos', stub);
-    }
-
-    if (sub === 'surprise') {
-        const theme = promptText || 'random masterpiece';
-        const stub = await thinking(Gifted, from, mek, `🎲 *Dreaming:* "${theme}"...`);
-        const { text: aiPrompt, err } = await askAI(`Create a professional, descriptive image prompt for: ${theme}. Enhance it with lighting and style keywords. Return ONLY the prompt.`);
-        if (err) return editMsg(Gifted, stub, `❌ *Dream Error:* ${aiPrompt}`);
-        return processGen(aiPrompt, 'surprise', stub);
-    }
-
-    if (sub === 'enhance') {
-        if (!promptText) return reply('📝 *Format:* \`.img enhance <basic prompt>\`');
-        const stub = await thinking(Gifted, from, mek, '✨ *Polishing Prompt...*');
-        const { text: enhanced, err } = await askAI(`Expand this image prompt into a high-quality professional version: "${promptText}". Add artistic details. Return ONLY the prompt.`);
-        if (err) return editMsg(Gifted, stub, `❌ *Enhance Error:* ${enhanced}`);
-        await editMsg(Gifted, stub, `✨ *Refined Prompt:*\n\n_${enhanced}_\n\n*Generating...*`);
-        return processGen(enhanced, 'enhance', stub);
-    }
-
-    if (sub === 'models') {
-        const list = Object.entries(CFG.IMG_MDLS).map(([id, meta]) => `${meta.tier === 'pro' ? '👑' : '🆓'} \`${id}\` — ${meta.desc}`).join('\n');
-        return reply(`📋 *Available Vision Engines*\n\n${list}\n\n*Switch:* \`.img config <engine>\``);
-    }
-
-    if (sub === 'config') {
-        const [engine, res, qly] = args.slice(1);
-        if (engine && CFG.IMG_MDLS[engine]) CFG.IMG_MODEL = engine;
-        if (res) CFG.IMG_SIZE = res;
-        if (qly) CFG.IMG_QUALITY = qly;
-        return reply(`⚙️ *Vision Config Updated*\n• Engine: \`${CFG.IMG_MODEL}\`\n• Size: \`${CFG.IMG_SIZE}\`\n• Quality: \`${CFG.IMG_QUALITY}\``);
-    }
-
-    if (sub === 'setup') {
-        const stub = await thinking(Gifted, from, mek, '🔧 *Validating API Keys...*');
-        _iOk = false;
-        const ok = await ensureInfip();
-        return editMsg(Gifted, stub, ok ? `✅ *Infip Link Verified*\nActive Key: \`${_iKey.slice(0, 15)}...\`` : `❌ *Key Authentication Failed.*`);
-    }
-
-    return reply(
-        `🎨 *Creative Vision Studio*\n\n` +
-        `• \`.img <prompt>\` — Quick generate\n` +
-        `• \`.img surprise [topic]\` — AI dreams for you\n` +
-        `• \`.img chaos\` — Randomized engine/parameters\n` +
-        `• \`.img enhance <prompt>\` — Better detail generation\n` +
-        `• \`.img models\` — List available engines\n` +
-        `• \`.img config <model> [size]\` — Adjust settings\n` +
-        `• \`.img setup\` — Re-auth API keys`
-    );
-});
-
-/**
- * .aitranslate — Multi-language Engine
- */
-gmd({
-    pattern: 'aitranslate',
-    cmdname: 'aitranslate',
-    aliases: ['gitrans', 'aitrans', 'translate'],
-    category: 'ai',
-    desc: 'Advanced AI Translation.',
-    react: '🌐',
-    filename: __filename
-}, async (from, Gifted, conText) => {
-    const { mek, q = '', reply, isSuperUser } = conText;
-    if (!isSuperUser) return reply('❌ Owner only.');
-
-    const args = q.trim().split(/\s+/);
-    const lang = args[0];
-    const content = args.slice(1).join(' ');
-
-    if (!lang || !content) return reply('📝 *Usage:* \`.aitranslate <language> <text>\`');
-
-    const stub = await thinking(Gifted, from, mek, `🌐 *Translating to ${lang}...*`);
-    const { text, err } = await askAI(`Translate the following text to ${lang}. Return ONLY the translated text, no conversational filler.\n\nText: ${content}`);
-    
-    if (err) return editMsg(Gifted, stub, `❌ *Translation Error:* ${text}`);
-    return editMsg(Gifted, stub, `🌐 *Translation: ${lang}*\n\n*Original:* ${content}\n*Result:* ${text}`);
-});
-
-/**
- * .aiwrite — Content Generation Engine
- */
-gmd({
-    pattern: 'aiwrite',
-    cmdname: 'aiwrite',
-    aliases: ['giwrite', 'compose', 'draft'],
-    category: 'ai',
-    desc: 'Creative content generator (roasts, stories, emails, etc.)',
-    react: '✍️',
-    filename: __filename
-}, async (from, Gifted, conText) => {
-    const { mek, q = '', reply, isSuperUser } = conText;
-    if (!isSuperUser) return reply('❌ Owner only.');
-
-    const args = q.trim().split(/\s+/);
-    const preset = args[0]?.toLowerCase();
-    const topic = args.slice(1).join(' ');
-
-    const prompts = {
-        roast: `Write a savage, funny, but friendly WhatsApp roast about: ${topic}.`,
-        story: `Write a short, engaging story (max 200 words) about: ${topic}.`,
-        email: `Draft a professional email regarding: ${topic}. Include a clear subject line.`,
-        caption: `Generate 5 creative social media captions with emojis for: ${topic}.`,
-        bio: `Write a clever and punchy bio for: ${topic}.`,
-        tweet: `Write a viral-style tweet thread about: ${topic}.`,
-        apology: `Write a sincere but natural apology about: ${topic}.`,
-        lyrics: `Write a short song verse and chorus about: ${topic}.`
-    };
-
-    if (!prompts[preset]) {
-        return reply(`✍️ *AI Content Writer*\n\n*Presets:* \`${Object.keys(prompts).join('`, `')}\`\n\n*Usage:* \`.aiwrite <preset> <topic>\``);
-    }
-    if (!topic) return reply(`📝 *Format:* \`.aiwrite ${preset} <what to write about>\``);
-
-    const stub = await thinking(Gifted, from, mek, `✍️ *Drafting ${preset}...*`);
-    const { text, err } = await askAI(prompts[preset]);
-    
-    if (err) return editMsg(Gifted, stub, `❌ *Drafting Failed:* ${text}`);
-    return editMsg(Gifted, stub, `✍️ *Result: ${preset.toUpperCase()}*\n\n${text}`);
-});
-
-/**
- * .aidecode — Vision & Context Analyzer
- */
-gmd({
-    pattern: 'aidecode',
-    cmdname: 'aidecode',
-    aliases: ['gianalyze', 'explain', 'vision'],
-    category: 'ai',
-    desc: 'Context-heavy explanation or vision analysis.',
-    react: '🔍',
-    filename: __filename
-}, async (from, Gifted, conText) => {
-    const { mek, q = '', reply, react, isSuperUser } = conText;
-    if (!isSuperUser) return reply('❌ Owner only.');
-
-    const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-    let imgUrls = [];
-
-    if (quoted?.imageMessage) {
-        await react('👁️');
-        const path = await Gifted.downloadAndSaveMediaMessage(quoted.imageMessage, `dec_${Date.now()}`);
-        const url = await uploadImgBB(path);
-        if (url) imgUrls.push(url);
-        try { if (fs.existsSync(path)) fs.unlinkSync(path); } catch(e) {}
-    }
-
-    const context = quoted?.conversation || quoted?.extendedTextMessage?.text || '';
-    if (!context && !imgUrls.length && !q) return reply('🔍 *Context Missing:* Reply to a message or image with \`.aidecode [focus]\`');
-
-    const stub = await thinking(Gifted, from, mek, '🔍 *Analyzing Context...*');
-    const prompt = imgUrls.length 
-        ? `Analyze this image in depth. ${q ? 'Specific question: ' + q : 'Explain what is happening and identify key elements.'}`
-        : `Deeply analyze and explain this message: "${context}". ${q ? 'Focus on: ' + q : 'Break down the meaning, tone, and intent.'}`;
-
-    const { text, err } = await askAI(prompt, imgUrls);
-    if (err) return editMsg(Gifted, stub, `❌ *Analysis Failed:* ${text}`);
-    return editMsg(Gifted, stub, `🔍 *AI Insights*\n\n${text}`);
-});
-// ==============================================================================
-// 18.  EVENT WATCHER — AUTO-REPLY, STALK & AUTO-ENHANCE
-// ==============================================================================
-let _isWatching = false;
-
-/**
- * @function attachWatcher
- * @description Main event loop for AI automation. Manages stalking, targeting, and DMs.
- */
-const attachWatcher = (Gifted) => {
-    if (_isWatching || !Gifted?.ev) return;
-    _isWatching = true;
-
-    Gifted.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify' && type !== 'append') return;
-
-        for (const msg of messages) {
-            try {
-                if (!msg.message || msg.key.remoteJid === 'status@broadcast') continue;
-
-                const fromMe  = msg.key.fromMe;
-                const chatId  = msg.key.remoteJid || '';
-                const sender  = msg.key.participant || msg.key.remoteJid || '';
-                const isGrp   = chatId.endsWith('@g.us');
-                const body    = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || '';
-                
-                // Normalize sender ID for stalking/targeting lookups
-                const cleanSender = sender.split(':')[0].split('@')[0] + '@s.whatsapp.net';
-
-                // --- 1. AUTO-ENHANCE OWN MESSAGES ---
-                if (fromMe && State.autoEnhance && body.length > 10 && !body.startsWith('.')) {
-                    // Delay slightly to allow the message to land first
-                    setTimeout(async () => {
-                        try {
-                            const { text: improved, err } = await askAI(
-                                "Act as a text refiner. Fix grammar, spelling, and flow while keeping the intent and language identical. " +
-                                "Return ONLY the corrected text. No quotes, no intro, no chatter.\n\nText: " + body
-                            );
-                            if (!err && improved.trim() && improved.trim().toLowerCase() !== body.trim().toLowerCase()) {
-                                await Gifted.sendMessage(chatId, { text: improved.trim(), edit: msg.key });
-                            }
-                        } catch (e) { /* silent fail for edit errors */ }
-                    }, 1500);
-                    continue;
-                }
-
-                // If message is from me or a command, ignore for auto-reply
-                if (fromMe || body.startsWith('.') || body.startsWith('/') || body.startsWith('!')) continue;
-
-                // --- 2. LOGIC SELECTION: STALK -> TARGET -> CHAT -> DM ---
-                let sess = null;
-
-                // Priority 1: Global Stalker (User is tracked in every chat)
-                if (State.stalkers.has(cleanSender)) {
-                    sess = State.stalkers.get(cleanSender);
-                } 
-                // Priority 2: Specific Target (User tracked in current chat or globally)
-                else if (State.targets.has(cleanSender)) {
-                    const targetData = State.targets.get(cleanSender);
-                    if (!targetData.chatId || targetData.chatId === chatId) {
-                        sess = targetData;
-                    }
-                } 
-                // Priority 3: Chat AI (Everyone in this specific chat triggers AI)
-                else if (State.chats.has(chatId)) {
-                    sess = State.chats.get(chatId);
-                } 
-                // Priority 4: DM Auto-Pilot
-                else if (!isGrp && State.dmActive) {
-                    if (!State.dmSessions.has(cleanSender)) {
-                        State.dmSessions.set(cleanSender, { 
-                            gem: State.dmGem || State.PERSONA, 
-                            history: [], 
-                            gemName: 'dm_autopilot' 
-                        });
-                    }
-                    sess = State.dmSessions.get(cleanSender);
+                    sess = State.dmSessions.get(sender);
                 }
 
                 if (!sess) continue;
 
-                // --- 3. EXECUTE AI RESPONSE ---
+                // Execute AI Pipeline for the matched session
                 setImmediate(async () => {
                     try {
-                        let imgUrls = [];
-                        const inputTxt = body || (msg.message.imageMessage ? '[User sent an image]' : '[Unsupported Message]');
-
-                        // Handle vision if message is an image
+                        let imgUrls = [], input = body || '[image]';
+                        
+                        // Handle vision context in watcher
                         if (msg.message.imageMessage) {
-                            const tmpPath = await Gifted.downloadAndSaveMediaMessage(msg.message.imageMessage, `watch_${Date.now()}`);
-                            if (tmpPath) {
-                                const url = await uploadImgBB(tmpPath);
-                                if (url) imgUrls.push(url);
-                                try { fs.unlinkSync(tmpPath); } catch (_) {}
-                            }
+                            try {
+                                const tp = await Gifted.downloadAndSaveMediaMessage(msg.message.imageMessage, `tmp_watch_${Date.now()}`);
+                                if (tp) {
+                                    const u = await uploadImgBB(tp);
+                                    if (u) imgUrls.push(u);
+                                    try { fs.unlinkSync(tp); } catch (_) {}
+                                }
+                            } catch (ve) { console.error('[AIGems] Watcher vision error:', ve.message); }
                         }
 
-                        // Update session history
-                        State.addHist(sess, 'User', inputTxt);
+                        State.addHist(sess, 'User', input);
+                        
+                        // Inject Markdown requirement into the dynamic prompt
+                        const mdPersona = `${sess.gem}\n\n*STRICT FORMATTING RULE:* Use WhatsApp markdown (bold *text*, italic _text_, monospace \`text\`) in every response. Keep the tone natural but structured. Use bullet points for lists.`;
+                        const prompt = State.buildPrompt(mdPersona, sess.history, input);
 
                         // Human-like delay simulation
-                        const typingTime = Math.min(inputTxt.length * 30, 3000) + 800;
-                        await sleep(typingTime);
-                        
+                        await sleep(Math.min(input.length * 40, 2500) + Math.random() * 800);
                         try { await Gifted.sendPresenceUpdate('composing', chatId); } catch (_) {}
-
-                        const prompt = State.buildPrompt(sess.gem, sess.history, inputTxt);
-                        const { text: aiResponse, err } = await askAI(prompt, imgUrls);
-
+                        
+                        const { text: response, err } = await askAI(prompt, imgUrls);
                         try { await Gifted.sendPresenceUpdate('paused', chatId); } catch (_) {}
+                        
+                        if (err && CB.open()) return; // Circuit breaker protection
 
-                        if (err || !aiResponse.trim()) return;
+                        State.addHist(sess, 'AI', response);
 
-                        State.addHist(sess, 'AI', aiResponse);
-
-                        // Construct quoted message for response
-                        const quotedMsg = {
+                        // Send as quoted reply to maintain thread context
+                        const quotedContext = {
                             key: {
                                 remoteJid: chatId,
                                 fromMe: false,
@@ -1885,57 +917,106 @@ const attachWatcher = (Gifted) => {
                             message: msg.message
                         };
 
-                        await Gifted.sendMessage(chatId, { text: aiResponse }, { quoted: quotedMsg });
+                        await Gifted.sendMessage(chatId, { text: response }, { quoted: quotedContext });
 
-                    } catch (e) {
-                        console.error(`[AIGems] Watcher Reply Error (${cleanSender}):`, e.message);
+                    } catch (innerErr) {
+                        console.error('[AIGems] Watcher internal exception:', innerErr.message);
                     }
                 });
-
-            } catch (e) {
-                console.error('[AIGems] Global Watcher Exception:', e.message);
+            } catch (loopErr) {
+                console.error('[AIGems] Watcher loop exception:', loopErr.message);
             }
         }
     });
-
-    console.log('✅ [AIGems] Watcher: Live and monitoring events.');
+    console.log('[AIGems] Event Watcher: Listening for messages.upsert');
 };
 
 // ==============================================================================
-// 19.  BOOT LOGIC & EXPORTS
+// 19.  AUTO-INITIALIZATION (Polling for Connection)
+// ==============================================================================
+const bootWatcher = () => {
+    const interval = setInterval(() => {
+        const Gifted = global.conn || global.client;
+        if (Gifted && Gifted.ev) {
+            attachWatcher(Gifted);
+            clearInterval(interval);
+        }
+    }, 5000);
+
+    // Initial immediate check
+    setTimeout(() => {
+        const Gifted = global.conn || global.client;
+        if (Gifted && Gifted.ev) {
+            attachWatcher(Gifted);
+            clearInterval(interval);
+        }
+    }, 1000);
+};
+
+bootWatcher();
+
+console.log('[AIGems] Module initialized and background watcher armed.');
+// ==============================================================================
+// 20.  EXTENDED AI TOOLS & ROBUST STALKING
 // ==============================================================================
 
-/**
- * Boot interval to ensure the watcher attaches to the global connection
- * even if this module loads before the connection is established.
- */
-const bootInterval = setInterval(() => {
-    const G = global.conn || global.client || global.Gifted;
-    if (G) {
-        attachWatcher(G);
-        clearInterval(bootInterval);
-    }
-}, 3000);
+gmd({
+    pattern: 'stalklist', cmdname: 'stalklist',
+    category: 'ai', desc: 'Lists all globally stalked targets.', react: '📋', filename: __filename
+}, async (from, Gifted, conText) => {
+    const { isSuperUser, reply } = conText;
+    if (!isSuperUser) return reply('❌ *Owner only.*');
+    if (State.stalkers.size === 0) return reply('📋 *No active stalkers.*');
+    let listMsg = '📋 *Active AI Stalking Targets:*\n\n';
+    State.stalkers.forEach((data, jid) => {
+        listMsg += `• @${jid.split('@')[0]} (Gem: \`${data.gemName}\`)\n`;
+    });
+    return reply(listMsg);
+});
 
-// Immediate check on load
-const G = global.conn || global.client || global.Gifted;
-if (G) {
-    attachWatcher(G);
-    clearInterval(bootInterval);
-}
+gmd({
+    pattern: 'stalkoff', cmdname: 'stalkoff',
+    category: 'ai', desc: 'Remove a target from global stalking.', react: '📴', filename: __filename
+}, async (from, Gifted, conText) => {
+    const { q, isSuperUser, reply } = conText;
+    if (!isSuperUser) return reply('❌ *Owner only.*');
+    const num = q.trim().replace(/[^0-9]/g, '');
+    if (!num) return reply('📝 `.stalkoff <number>`');
+    const jid = num + '@s.whatsapp.net';
+    if (State.stalkers.delete(jid)) return reply(`✅ *Removed @${num} from stalking list.*`);
+    return reply(`❌ *Target @${num} not found in stalker list.*`);
+});
 
-console.log('🚀 [AIGems] Module fully initialized.');
+gmd({
+    pattern: 'aireboot', cmdname: 'aireboot',
+    category: 'ai', desc: 'Hard reset the AI system and watcher.', react: '🔄', filename: __filename
+}, async (from, Gifted, conText) => {
+    const { isSuperUser, reply } = conText;
+    if (!isSuperUser) return reply('❌ *Owner only.*');
+    _watchDone = false;
+    const G = global.conn || global.client;
+    if (G) attachWatcher(G);
+    return reply('🔄 *AI System rebooted and Watcher re-attached.*');
+});
 
-module.exports = {
-    AIGems: {
-        State,
-        Gems,
-        Limiter,
-        CB,
-        askAI,
-        generateImage,
-        uploadImgBB,
-        config: CFG,
-        attach: attachWatcher
-    }
-};
+// ==============================================================================
+// 21.  FINAL BOOTSTRAP (Skeleton Adherence)
+// ==============================================================================
+
+const _boot = setInterval(() => { 
+    const G = global.conn || global.client; 
+    if (G && G.ev) { 
+        attachWatcher(G); 
+        clearInterval(_boot); 
+    } 
+}, 8000);
+
+setTimeout(() => { 
+    const G = global.conn || global.client; 
+    if (G && G.ev) { 
+        attachWatcher(G); 
+        clearInterval(_boot); 
+    } 
+}, 2000);
+
+console.log('[AIGems] Module loaded');
