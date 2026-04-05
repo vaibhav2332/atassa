@@ -205,7 +205,6 @@ const askAI = async (prompt, imgUrls = []) => {
         prompt : { id:'ai_chat' },
         tools  : []
     };
-};
 
     for (let attempt = 0; attempt < CFG.RETRIES; attempt++) {
         try {
