@@ -7,7 +7,27 @@
 
 'use strict';
 
+=======================================================================
+=======================================================================
+// 15. RUNTIME STATE HELPERS
 // ==============================================================================
+
+const State = {
+    dmActive: false,
+=======
+// ==============================================================================
+// 15. RUNTIME STATE HELPERS
+// ==============================================================================
+
+State = {
+    dmActive: false, 9. MODULEBASE HELPERS
+// ==============================================================================
+const resolveContext = (arg1, args) => {
+=======
+// ==============================================================================
+// 9. MODULEBASE HELPERS
+// ==============================================================================
+resolveContext = (arg1, args) => { ==============================================================================
 // 1. IMPORTS & DYNAMIC REGISTRAR
 // ==============================================================================
 const axios = require('axios');
@@ -39,7 +59,7 @@ try {
 /**
  * Deep Argument Hunter: Finds the true socket and message object.
  */
-const resolveContext = (arg1, args) => {
+let resolveContext = (arg1, args) => {
     let sock = global.conn || global.client || arg1.bot || arg1.client;
     let m = arg1;
     const allArgs = [arg1, ...args];
@@ -58,7 +78,7 @@ const resolveContext = (arg1, args) => {
 /**
  * Deep Quote Sanitizer: Prevents Baileys `jidDecode` and `fromMe` crashes.
  */
-const buildSafeQuote = (m) => {
+let buildSafeQuote = (m) => {
     if (!m || !m.key || !m.key.remoteJid || !m.key.id) return {};
     const cleanKey = {
         remoteJid: String(m.key.remoteJid),
@@ -190,7 +210,7 @@ const CB = {
 // ==============================================================================
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-const askAI = async (prompt, imgUrls = []) => {
+let askAI = async (prompt, imgUrls = []) => {
     if (CB.open())        return { text: CB.msg(),                          err: true };
     if (!Limiter.check()) return { text: 'rate limit hit — wait a moment', err: true };
 
@@ -269,7 +289,7 @@ const askAI = async (prompt, imgUrls = []) => {
 // ==============================================================================
 // 7. IMAGE HANDLING UTILITIES
 // ==============================================================================
-const uploadImgBB = async (filePath) => {
+let uploadImgBB = async (filePath) => {
     if (!fs.existsSync(filePath)) return null;
     try {
         const FormData = require('form-data');
@@ -286,7 +306,7 @@ const uploadImgBB = async (filePath) => {
     }
 };
 
-const generateImage = async (prompt, opts = {}) => {
+let generateImage = async (prompt, opts = {}) => {
     const model = opts.model || CFG.IMG_MODEL;
     const size = opts.size || CFG.IMG_SIZE;
     const n = Math.min(opts.count || CFG.IMG_COUNT, 4);
@@ -321,7 +341,7 @@ const generateImage = async (prompt, opts = {}) => {
 // ==============================================================================
 // 8. SESSION & TRACKING STATE
 // ==============================================================================
-const State = {
+let State = {
     dmActive: false,
     dmGem: null,
     chats: new Map(),     // Active AI in specific group
@@ -358,7 +378,7 @@ const resolveContext = (arg1, args) => {
     return { m, sock };
 };
 
-const buildSafeQuote = (m) => {
+buildSafeQuote = (m) => {
     if (!m || !m.key) return {};
     return {
         quoted: {
@@ -825,7 +845,7 @@ initAtassa();
  * @param {Array} imgUrls - List of image URLs for vision tasks.
  * @returns {Promise<{text: string, err: boolean}>}
  */
-const askAI = async (prompt, imgUrls = []) => {
+askAI = async (prompt, imgUrls = []) => {
     // 1. Circuit Breaker & Rate Limit Check
     if (CB.open()) return { text: CB.msg(), err: true };
     if (!Limiter.check()) return { text: "_system: rate limit reached. try again in a minute._", err: true };
@@ -1074,7 +1094,7 @@ const State = {
  * uploadImgBB: High-speed image hosting for vision-based AI tasks.
  * Uses the key from CFG and returns a direct JPG link.
  */
-const uploadImgBB = async (filePath) => {
+uploadImgBB = async (filePath) => {
     if (!fs.existsSync(filePath)) return null;
     try {
         const FormData = require('form-data');
@@ -1120,7 +1140,7 @@ const ensureInfip = async () => {
  * generateImage: Core engine for multi-model AI image generation.
  * Implements _iCache to prevent duplicate credit consumption for identical prompts.
  */
-const generateImage = async (prompt, opts = {}) => {
+generateImage = async (prompt, opts = {}) => {
     const model = opts.model || CFG.IMG_MODEL;
     const size = opts.size || CFG.IMG_SIZE;
     const n = Math.min(opts.count || CFG.IMG_COUNT, 4);
@@ -1159,7 +1179,7 @@ const generateImage = async (prompt, opts = {}) => {
  * askAI: Stream-parsed connection to QuillBot with vision and history support.
  * Forces response into WhatsApp Markdown format.
  */
-const askAI = async (prompt, imgUrls = []) => {
+askAI = async (prompt, imgUrls = []) => {
     const payload = {
         stream: true,
         message: {
