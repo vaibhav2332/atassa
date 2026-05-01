@@ -706,6 +706,29 @@ async function sendSafe(Gifted, chatId, text, mek=null) {
     }
 }
 
+
+
+async function enrichWithTopicImage(text, query, Gifted, from, mek, conText) {
+    const { GiftedTechApi, GiftedApiKey } = conText || {};
+    if (!query || !GiftedTechApi || !GiftedApiKey) return false;
+    const apis = [
+        `/api/search/unsplash?apikey=${GiftedApiKey}&query=${encodeURIComponent(query)}`,
+        `/api/search/gglimage?apikey=${GiftedApiKey}&query=${encodeURIComponent(query)}`
+    ];
+    for (const api of apis) {
+        try {
+            const r = await axios.get(`${GiftedTechApi}${api}`, { timeout: 20000 });
+            const arr = r.data?.result || r.data?.results || r.data?.data || [];
+            const first = Array.isArray(arr) ? arr[0] : null;
+            const url = first?.url || first?.image || first?.thumb || first?.src || first;
+            if (typeof url === 'string' && url.startsWith('http')) {
+                await Gifted.sendMessage(from, { image: { url }, caption: text }, { quoted: mek });
+                return true;
+            }
+        } catch (_) {}
+    }
+    return false;
+}
 async function getQuotedImageUrl(mek, Gifted) {
     try {
         const reply  = mek?.message?.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -929,8 +952,10 @@ gmd(
                     `You are a helpful bot assistant. The user asked: "${q}". You just performed the action and got this result:\n${result}\n\nGive a short, casual 1-sentence comment about it (no need to repeat the result).`,
                     [], conText
                 );
-                return editOrReply(Gifted, chatId, mek,
-                    `${result}\n\n${aiComment && !aiComment.startsWith('⚠️') ? `\n💬 ${aiComment}` : ''}`);
+                const finalText = `${result}\n\n${aiComment && !aiComment.startsWith('⚠️') ? `\n💬 ${aiComment}` : ''}`;
+                const sentImg = await enrichWithTopicImage(finalText, intent.query || rest || q, Gifted, chatId, mek, conText);
+                if (!sentImg) return editOrReply(Gifted, chatId, mek, finalText);
+                return;
             }
             // Media sent directly — delete the "Thinking..." message
             try { await Gifted.sendMessage(chatId, { delete: mek.key }); } catch (_) {}
@@ -1819,6 +1844,47 @@ gmd(
     }
 );
 
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  .aidesk — MULTI-UTILITY AI COMMAND CENTER
+// ═══════════════════════════════════════════════════════════════════════════
+gmd(
+    {
+        pattern : 'aidesk',
+        aliases : ['aihub', 'aicontrol', 'gptdesk'],
+        category: 'ai',
+        react   : '🧩',
+        desc    : '20+ AI utility actions from one command',
+        filename: __filename,
+    },
+    async (from, Gifted, conText) => {
+        const { q, mek } = conText;
+        const parts = (q || '').trim().split(/\s+/);
+        const action = (parts.shift() || '').toLowerCase();
+        const input = parts.join(' ').trim();
+        if (!action) return editOrReply(Gifted, from, mek, 'Usage: *.aidesk <summarize|rewrite|plan|email|tweet|translate|json|table|regex|sql|debug|review|prompt|compare|interview|study|todo|decision|caption|explain|brainstorm> <text>*');
+
+        const actions = {
+            summarize:'Summarize into bullet points.', rewrite:'Rewrite in better natural English preserving meaning.',
+            plan:'Create a step-by-step practical plan.', email:'Write a professional email.',
+            tweet:'Write 3 tweet options.', translate:'Translate to English unless target language specified in request.',
+            json:'Return structured JSON only.', table:'Return markdown table.', regex:'Generate regex with explanation.',
+            sql:'Write SQL query and brief notes.', debug:'Debug this issue and provide fix strategy.',
+            review:'Do a code review style critique.', prompt:'Turn this into a strong AI prompt.',
+            compare:'Compare options with pros/cons.', interview:'Generate interview Q&A set.',
+            study:'Create a study guide.', todo:'Convert into prioritized TODO list.',
+            decision:'Provide decision matrix and recommendation.', caption:'Generate 5 catchy captions.',
+            explain:'Explain simply with analogy.', brainstorm:'Generate 10 creative ideas.'
+        };
+        if (!actions[action]) return editOrReply(Gifted, from, mek, `Unknown action: *${action}*`);
+        if (!input) return editOrReply(Gifted, from, mek, `Please provide input text for *${action}*.`);
+
+        await editOrReply(Gifted, from, mek, `🧩 Working on *${action}*...`);
+        const resp = await smartAI(`${actions[action]}\n\nInput:\n${input}`, [], conText);
+        return editOrReply(Gifted, from, mek, `🧩 *AIDesk · ${action}*\n\n${resp}`);
+    }
+);
 // ═══════════════════════════════════════════════════════════════════════════
 //  .aihelp — FULL HELP MENU (NEW)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1841,7 +1907,8 @@ gmd(
             + `${p}ask [question] — Quick one-shot AI\n`
             + `${p}think [topic] — Deep reasoning\n`
             + `${p}vision — Analyse quoted image\n`
-            + `${p}code [request] — Code generation\n\n`
+            + `${p}code [request] — Code generation\n`
+            + `${p}aidesk <action> <text> — 20+ utility actions\n\n`
             + `*Creative:*\n`
             + `${p}roast [target] — AI roast\n`
             + `${p}compliment [target] — AI compliment\n`
