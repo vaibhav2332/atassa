@@ -431,7 +431,7 @@ async function loadSession() {
         }
 
         if (!b64Check.startsWith('H4sI')) {
-            const serverUrl = `https://session.giftedtech.co.ke/session/${b64Check}`;
+            const serverUrl = `https://session.gifted.co.ke/session/${b64Check}`;
             const res = await axios.get(serverUrl, { timeout: 15000 });
             const fetched = (res.data || '').toString().trim();
             if (!fetched.startsWith('Gifted~H4sI')) {
